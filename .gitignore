@@ -47,6 +47,7 @@ build/
 
 # Coverage reports
 coverage/
+.coverage
 *.lcov
 .nyc_output/
 
