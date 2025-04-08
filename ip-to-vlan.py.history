@@ -1,0 +1,43 @@
+whois
+?
+help
+whois
+wirtn 100
+wirtn 200
+help
+debug
+debug 1
+wirtn 200
+whois
+help
+wirtn 200
+wirtn 0x200
+wirtn 200:3
+whois
+help
+wirtn 200:
+wirtn 10.88.255.55
+wirtn 10.88.255.255
+wirtn 10.88.0.24
+help
+iartn
+wirtn 200
+wirtn 10.88.255.255
+wirtn 10.88.0.24
+wirtn
+wirtn 10.88.0.24
+wirtn 200:*
+wirtn 10.88.0.24 200
+wirtn 10.88.255.255 200
+iartn 10.88.0.24 200
+iartn 10.88.255.255 200
+iartn 10.88.0.0/16 200
+iartn 10.88.0.24 200
+iartn 10.88.0.24 200:*
+iartn 10.88.0.24 200
+iartn 10.88.0.21 200
+iartn 10.88.0.24:47808 200
+iartn help
+help iartn
+iartn 10.88.0.24/16:47808 200
+iartn 10.88.0.24/16 200

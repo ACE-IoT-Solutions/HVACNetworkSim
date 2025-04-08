@@ -1,0 +1,39 @@
+[
+  {
+    "object-identifier": [
+      "device",
+      1001
+    ],
+    "object-name": "VAV-1",
+    "object-type": "device",
+    "vendor-identifier": 999,
+    "vendor-name": "HVACNetwork",
+    "model-name": "VAVBox", 
+    "protocol-version": 1,
+    "protocol-revision": 19,
+    "application-software-version": "1.0",
+    "description": "Virtual VAV Box"
+  },
+  {
+    "object-identifier": [
+      "network-port",
+      1
+    ],
+    "object-name": "NetworkPort",
+    "object-type": "network-port",
+    "network-type": "virtual",
+    "network-interface-name": "test-vlan",
+    "mac-address": "0x01"
+  },
+  {
+    "object-identifier": [
+      "analog-value",
+      1
+    ],
+    "object-name": "temperature",
+    "object-type": "analog-value",
+    "present-value": 72.0,
+    "description": "Zone Temperature",
+    "units": "degrees-fahrenheit"
+  }
+]

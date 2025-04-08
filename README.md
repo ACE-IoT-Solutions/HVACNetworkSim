@@ -74,6 +74,9 @@ python example_building_simulation.py
 
 # Run comprehensive system simulation with all equipment types (requires matplotlib)
 python example_complete_system.py
+
+# Run BACnet integration with accelerated VAV simulation (requires BAC0)
+python example_bacnet_simulation.py
 ```
 
 ## Features
@@ -174,3 +177,61 @@ The `example_complete_system.py` script demonstrates a complete HVAC system with
 - Performance monitoring of all system components
 - Analysis of efficiency under varying conditions
 - Detailed visualization of key performance metrics
+
+### BACnet Integration Simulation
+
+The `example_bacnet_simulation.py` script demonstrates BACnet integration with our HVAC simulation:
+
+- Creates a simulated VAV box with realistic behavior
+- Automatically generates BACnet points from process variable metadata
+- Maps Python data types to appropriate BACnet object types
+- Establishes a BAC0.lite() network for BACnet/IP communication
+- Runs an accelerated simulation (1 hour per minute) with dynamic behavior
+- Continuously updates BACnet points with current simulation state
+- Makes the simulated HVAC equipment discoverable by any BACnet client
+- Proper conversion of state variables (like modes) to BACnet multi-state values
+
+## Process Variables and Metadata
+
+All equipment classes in the simulation provide standardized access to their state through:
+
+1. `get_process_variables()` - Instance method that returns a dictionary of all current state variables
+2. `get_process_variables_metadata()` - Class method that returns metadata for all process variables
+
+The metadata includes:
+- Type information (float, int, bool, str, etc.)
+- Human-readable labels
+- Detailed descriptions
+- Units (°F, CFM, BTU/hr, etc.)
+- Enumeration options for state variables
+
+This standardized interface enables:
+- Consistent access to equipment state across the simulation
+- Self-describing HVAC equipment models
+- Automatic BACnet point generation with appropriate data types
+- Future extension for other protocols and interfaces
+
+## BACnet Integration
+
+The simulation framework includes BACnet integration using the BAC0 library. To use this feature:
+
+1. Install BAC0:
+   ```bash
+   pip install BAC0
+   ```
+
+2. Run the BACnet integration example:
+   ```bash
+   python example_bacnet_simulation.py
+   ```
+
+You can then use any BACnet client to discover and interact with the simulated HVAC equipment, including:
+- BAC0's built-in script functionality
+- Yabe (Yet Another BACnet Explorer)
+- Proprietary BMS systems with BACnet/IP discovery
+
+The BACnet integration enables:
+- Testing BACnet interfaces without physical equipment
+- Developing and debugging BACnet applications
+- Creating hybrid systems with real and simulated equipment
+- Training purposes for building automation
