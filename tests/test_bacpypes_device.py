@@ -322,7 +322,7 @@ class BACpypesVAVDeviceTests(unittest.TestCase):
         
         # Find the setpoint object
         setpoint_point = None
-        for obj in device_app.objectIdentifier.values()
+        for obj in device_app.objectIdentifier.values():
             if hasattr(obj, "objectName") and obj.objectName == "zone_temp_setpoint":
                 setpoint_point = obj
                 break

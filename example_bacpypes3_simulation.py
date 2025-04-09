@@ -25,12 +25,17 @@ from bacpypes3.local.multistate import MultiStateValueObject
 
 from src.vav_box import VAVBox
 
+IP_ADDRESS = "10.88.0.3"
+IP_SUBNET = "/16"
+IP_SUBNET_MASK = "255.255.0.0"
+
 # Global references to keep objects alive
 all_devices = []
 virtual_network = None
 controller_app = None
 exit_event = None
 app: Application
+
 
 async def create_controller(network_name, mac_address="0x01"):
     """Create a controller device that can interact with the VAV boxes."""
@@ -55,10 +60,10 @@ async def create_controller(network_name, mac_address="0x01"):
             "bacnet-ip-mode": "normal",
             "bacnet-ip-udp-port": 47808,
             "changes-pending": False,
-            "ip-address": "10.88.0.24",
-            "ip-subnet-mask": "255.255.0.0",
+            "ip-address": IP_ADDRESS,
+            "ip-subnet-mask": IP_SUBNET_MASK,
             "link-speed": 0.0,
-            "mac-address": "10.88.0.24:47808",
+            "mac-address": f"{IP_ADDRESS}:47808",
             "network-number": 100,
             "network-number-quality": "configured",
             "network-type": "ipv4",
@@ -156,9 +161,14 @@ async def read_vav_state(controller_app, i_am):
     
     return state
 
-async def simulate_vav_box(vav, app, hours_per_minute=60, simulation_time=24):
-    """Simulate a VAV box for a specified period, updating its BACnet device."""
+async def simulate_vav_box(vav, app, hours_per_minute=60):
+    """Maintain an ongoing simulation of a VAV box, updating when requested.
     
+    Args:
+        vav: VAVBox instance to simulate
+        app: BACpypes3 Application object
+        hours_per_minute: Speed factor for simulation time
+    """
     # Define a 24-hour period of outdoor temperatures with a sine wave pattern
     # Coldest at 5 AM, warmest at 5 PM
     outdoor_temps = {hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12) for hour in range(24)}
@@ -170,6 +180,8 @@ async def simulate_vav_box(vav, app, hours_per_minute=60, simulation_time=24):
     # Simulation start time - 6 AM
     start_hour = 6
     current_hour = start_hour
+    current_minute = 0
+    previous_time = (current_hour, current_minute)
     
     # Constant AHU supply air temperature
     supply_air_temp = 55  # °F
@@ -180,47 +192,69 @@ async def simulate_vav_box(vav, app, hours_per_minute=60, simulation_time=24):
     print(f"\nStarting simulation for VAV box {vav.name}...")
     print(f"Speed: {hours_per_minute}x (1 hour per {sleep_time:.1f} seconds)")
     
-    # Run for specified simulation period (in hours)
-    end_hour = start_hour + simulation_time
-    
     try:
-        while True and not exit_event.is_set():
+        while not exit_event.is_set():
             # Get current simulation hour (wrapped to 0-23)
             hour = current_hour % 24
-            minute = 0
+            minute = current_minute
             
             # Get temperature for current hour
             outdoor_temp = outdoor_temps[hour]
+            
+            # Add some random variation to make it more realistic
+            outdoor_temp += random.uniform(-1, 1)  # ±1°F variation
             
             # Check if occupied based on time of day
             is_occupied = any(start <= hour < end for start, end in occupied_hours)
             occupancy_count = occupancy if is_occupied else 0
             
-            # Add some random variation to make it more realistic
-            outdoor_temp += random.uniform(-1, 1)  # ±1°F variation
-            
             # Set occupancy
             vav.set_occupancy(occupancy_count)
             
+            # Only reset if temperature is truly unrealistic
+            if vav.zone_temp < 20 or vav.zone_temp > 120:
+                print(f"Resetting unrealistic temperature: {vav.zone_temp:.1f}°F to setpoint")
+                vav.zone_temp = vav.zone_temp_setpoint
+                
             # Update VAV box with current conditions
             vav.update(vav.zone_temp, supply_air_temp)
             
-            # Simulate thermal behavior for 1 hour
+            # Simulate thermal behavior for the time elapsed since last update
             vav_effect = 0
             if vav.mode == "cooling":
-                vav_effect = vav.current_airflow / vav.max_airflow
+                vav_effect = vav.current_airflow / vav.max_airflow  # Positive effect for cooling in our thermal model
             elif vav.mode == "heating" and vav.has_reheat:
-                vav_effect = -vav.reheat_valve_position
+                vav_effect = -vav.reheat_valve_position  # Negative effect for heating in our thermal model
+                
+            # Calculate minutes elapsed since last update
+            prev_hour, prev_minute = previous_time
+            minutes_elapsed = ((hour - prev_hour) % 24) * 60 + (minute - prev_minute)
+            if minutes_elapsed <= 0:
+                minutes_elapsed = 1  # Ensure at least 1 minute of simulation
+                
+            # Cap the maximum simulation step to avoid large temperature jumps
+            minutes_elapsed = min(minutes_elapsed, 60)
                 
             temp_change = vav.calculate_thermal_behavior(
-                minutes=60,  # 1 hour
+                minutes=minutes_elapsed,
                 outdoor_temp=outdoor_temp,
                 vav_cooling_effect=vav_effect,
                 time_of_day=(hour, minute)
             )
             
-            # Update zone temperature with calculated change
+            # Our thermal model now handles rate-of-change limits internally
+            # This is now redundant, but we'll keep a more generous limit as a safety check
+            max_allowed_change = 5.0  # Maximum 5°F change per step to prevent simulation errors
+            temp_change = max(min(temp_change, max_allowed_change), -max_allowed_change)
+            
+            # Update zone temperature with calculated change (scaled by elapsed time)
             vav.zone_temp += temp_change
+            
+            # Our thermal model now naturally prevents extreme temperatures
+            # No artificial clamping needed
+            
+            # Save current time for next update
+            previous_time = (hour, minute)
             
             # Update the BACnet device
             await vav.update_bacpypes3_device(app)
@@ -231,33 +265,51 @@ async def simulate_vav_box(vav, app, hours_per_minute=60, simulation_time=24):
                   f"Zone: {vav.zone_temp:.1f}°F, Mode: {vav.mode}, " +
                   f"Airflow: {vav.current_airflow:.0f} CFM")
             
-            # Move to next hour
-            current_hour += 1
+            # Increment time by a small amount for the next simulation step
+            current_minute += 15  # 15-minute increments
+            if current_minute >= 60:
+                current_hour += 1
+                current_minute = 0
             
             # Sleep for the appropriate time to maintain simulation speed
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(sleep_time / 4)  # Quarter of an hour in sim time
             
     except asyncio.CancelledError:
         print(f"\nSimulation for {vav.name} cancelled.")
     except Exception as e:
         print(f"\nError in {vav.name} simulation: {e}")
     finally:
-        print(f"Simulation for {vav.name} stopped at hour {current_hour}.")
+        print(f"Simulation for {vav.name} stopped at {hour:02d}:{minute:02d}.")
 
 async def controller_monitoring(controller_app, monitoring_interval=5):
     """Periodically monitor VAV devices from the controller."""
     try:
         discovered_devices = []
         
+        # Initial discovery
+        print("\nInitial device discovery...")
+        i_ams = await discover_devices(controller_app)
+        discovered_devices = i_ams
+        
+        # Initial state reading
+        if i_ams:
+            print("\nReading initial state of all devices:")
+            for i_am in i_ams:
+                await read_vav_state(controller_app, i_am)
+        
+        # Periodic monitoring
         while not exit_event.is_set():
-            # Every minute, discover devices
             try:
-                # Discover devices
-                i_ams = await discover_devices(controller_app)
-                discovered_devices = i_ams
+                # Every interval, read the latest state from each device
+                print("\n--- Controller Monitoring Update ---")
                 
-                # Read state from each device
-                for i_am in i_ams:
+                # Re-discover devices occasionally to catch any changes
+                if random.random() < 0.2:  # 20% chance to rediscover
+                    i_ams = await discover_devices(controller_app)
+                    discovered_devices = i_ams
+                
+                # Read state from each known device
+                for i_am in discovered_devices:
                     await read_vav_state(controller_app, i_am)
                     
             except Exception as e:
@@ -378,18 +430,18 @@ async def main():
         for vav, app in vav_devices:
             simulation_tasks.append(
                 asyncio.create_task(
-                    simulate_vav_box(vav, app, hours_per_minute=60, simulation_time=24)
+                    simulate_vav_box(vav, app, hours_per_minute=60)
                 )
             )
         
         # Start controller monitoring
-        # monitoring_task = asyncio.create_task(
-        #     controller_monitoring(controller_app, monitoring_interval=10)
-        # )
+        monitoring_task = asyncio.create_task(
+            controller_monitoring(controller_app, monitoring_interval=10)
+        )
         
         # Wait for all tasks to complete
         await asyncio.gather(*simulation_tasks,
-                            #  monitoring_task
+                             monitoring_task
                              )
         
     except Exception as e:

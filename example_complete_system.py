@@ -547,63 +547,50 @@ def estimate_wet_bulb(dry_bulb, relative_humidity):
     return min(wet_bulb, dry_bulb)
 
 def simulate_zone_temperatures(zones, outdoor_temp, hour, solar_ghi):
-    """Simulate zone temperatures based on conditions and previous control actions."""
+    """Simulate zone temperatures based on conditions and previous control actions.
+    This now uses each VAV's thermal model for consistency."""
     zone_temps = {}
     
     # Define occupancy pattern (8 AM to 6 PM)
     is_occupied = 8 <= hour <= 18
+    current_minute = 0  # We're simulating in 1-hour increments
     
-    # Solar exposure factors by orientation and time
-    solar_factors = {
-        "north": 0.4,
-        "east": 1.0 if 6 <= hour <= 12 else 0.3,
-        "south": 0.7 if 9 <= hour <= 15 else 0.3,
-        "west": 1.0 if 12 <= hour <= 18 else 0.3
-    }
-    
-    for vav in zones.values():
-        # Get the VAV's current temperature
-        current_temp = vav.zone_temp
-        
-        # Calculate internal loads
-        internal_load = 0
-        
-        # Occupancy effect
+    for vav_name, vav in zones.items():
+        # Set occupancy based on schedule
         if is_occupied:
             # Simulate 1 person per 150 sq ft during occupied hours
             occupancy = max(1, int(vav.zone_area / 150))
-            internal_load += occupancy * 250 / vav.zone_area  # 250 BTU/hr per person
-            
-            # Add equipment load during occupied hours
-            internal_load += 2.0  # 2 W/sq ft equipment load
+            vav.set_occupancy(occupancy)
+        else:
+            vav.set_occupancy(0)
         
-        # Calculate building fabric heat transfer
-        fabric_load = (outdoor_temp - current_temp) * 0.05  # Simple U-value model
+        # Update VAV based on current conditions
+        vav.update(vav.zone_temp, vav.supply_air_temp)
         
-        # Solar gain - affected by orientation
-        orientation = vav.window_orientation.lower()
-        solar_factor = solar_factors.get(orientation, 0.5)
-        
-        # Calculate solar heat gain through windows
-        solar_load = 0
-        if solar_ghi > 0 and vav.window_area > 0:
-            solar_load = solar_ghi * solar_factor * vav.window_area * 0.0005  # Convert to °F/hr
-        
-        # Calculate HVAC effect
-        hvac_effect = 0
+        # Calculate VAV effect based on mode
+        vav_effect = 0
         if vav.mode == "cooling":
-            hvac_factor = vav.current_airflow / vav.max_airflow
-            hvac_effect = -4 * hvac_factor  # Cooling effect up to 4°F/hr
-        elif vav.mode == "heating":
-            hvac_factor = vav.reheat_valve_position
-            hvac_effect = 5 * hvac_factor  # Heating effect up to 5°F/hr
+            vav_effect = vav.damper_position  # Positive for cooling
+        elif vav.mode == "heating" and vav.has_reheat:
+            vav_effect = -vav.reheat_valve_position  # Negative for heating
         
-        # Calculate new temperature - adjusted by thermal mass factor
-        thermal_mass_factor = 1.0 / vav.thermal_mass if hasattr(vav, 'thermal_mass') else 0.5
-        new_temp = current_temp + (internal_load + fabric_load + solar_load + hvac_effect) * thermal_mass_factor
+        # Calculate temperature change using VAV's thermal model
+        temp_change = vav.calculate_thermal_behavior(
+            minutes=60,  # 1-hour simulation step
+            outdoor_temp=outdoor_temp,
+            vav_cooling_effect=vav_effect,
+            time_of_day=(hour, current_minute)
+        )
         
+        # Update zone temperature
+        vav.zone_temp += temp_change
+        
+        # Only reset if temperature is truly unrealistic
+        if vav.zone_temp < 20 or vav.zone_temp > 120:
+            vav.zone_temp = vav.zone_temp_setpoint
+            
         # Store the new temperature
-        zone_temps[vav.name] = new_temp
+        zone_temps[vav_name] = vav.zone_temp
     
     return zone_temps
 

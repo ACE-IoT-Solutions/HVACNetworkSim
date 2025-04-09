@@ -6,7 +6,7 @@ from bacpypes3.object import AnalogValueObject, BinaryValueObject, MultiStateVal
 
 
 class PIDController:
-    """Simple PID controller implementation."""
+    """Enhanced PID controller implementation with anti-windup and improved performance."""
 
     def __init__(self, kp=1.0, ki=0.1, kd=0.05, output_min=0.0, output_max=1.0):
         self.kp = kp
@@ -16,29 +16,68 @@ class PIDController:
         self.output_max = output_max
         self.setpoint = 0
         self.previous_error = 0
+        self.previous_value = 0
         self.integral = 0
+        self.last_output = 0
+        self.integral_windup_guard = 10.0  # Limit for integral term
+        self.deadband = 0.5  # Small deadband to prevent micro-adjustments
+        
+        # Moving average for derivative calculation to reduce noise
+        self.error_history = [0] * 3
+        self.history_index = 0
 
     def compute(self, process_variable, setpoint=None):
         """Compute PID output based on process variable and setpoint."""
         if setpoint is not None:
             self.setpoint = setpoint
+        
+        # Avoid responding to tiny temperature changes
+        if abs(process_variable - self.previous_value) < 0.1:
+            # Temperature hasn't changed significantly, maintain previous output
+            return self.last_output
+        
+        self.previous_value = process_variable
 
-        # Calculate error - for cooling we want to invert the error calculation
-        # so positive error means we need more cooling
+        # Calculate error with deadband to prevent micro-adjustments near setpoint
+        raw_error = 0
         if process_variable > self.setpoint:  # Cooling mode
-            error = process_variable - self.setpoint
+            if process_variable > self.setpoint + self.deadband:
+                raw_error = process_variable - self.setpoint
         else:  # Heating mode
-            error = self.setpoint - process_variable
-
+            if process_variable < self.setpoint - self.deadband:
+                raw_error = self.setpoint - process_variable
+        
+        # Store error in history buffer for smoothed derivative
+        self.error_history[self.history_index] = raw_error
+        self.history_index = (self.history_index + 1) % len(self.error_history)
+        
+        # Use error sign to determine if we're heating or cooling
+        error_sign = 1 if process_variable > self.setpoint else -1
+        
+        # Calculate error for proportional term
+        error = raw_error * error_sign
+        
         # Calculate P term
         p_term = self.kp * error
 
-        # Calculate I term
-        self.integral += error
+        # Calculate I term with anti-windup protection
+        # Only integrate error if we're not saturated or if the integral will help move away from saturation
+        if (self.last_output < self.output_max and error > 0) or (self.last_output > self.output_min and error < 0):
+            self.integral += error
+            
+        # Implement integral windup guard
+        self.integral = max(-self.integral_windup_guard, min(self.integral_windup_guard, self.integral))
+        
         i_term = self.ki * self.integral
 
-        # Calculate D term
-        d_term = self.kd * (error - self.previous_error)
+        # Calculate D term using moving average for smoother response
+        avg_error = sum(self.error_history) / len(self.error_history)
+        # Only apply derivative term if it will help stabilize (reduce oscillation)
+        if abs(avg_error) < abs(self.previous_error):
+            d_term = self.kd * (avg_error - self.previous_error)
+        else:
+            d_term = 0
+        
         self.previous_error = error
 
         # Calculate output
@@ -46,13 +85,20 @@ class PIDController:
 
         # Clamp output to limits
         output = max(self.output_min, min(self.output_max, output))
+        
+        # Store output for next time
+        self.last_output = output
 
         return output
 
     def reset(self):
         """Reset controller state."""
         self.previous_error = 0
+        self.previous_value = 0
         self.integral = 0
+        self.last_output = 0
+        self.error_history = [0] * len(self.error_history)
+        self.history_index = 0
 
 
 class VAVBox:
@@ -317,13 +363,19 @@ class VAVBox:
 
         # 1. Heat transfer through building envelope
         # Simplified U-value approach: BTU/hr/ft²/°F × area × temp difference
-        average_u_value = 0.1  # Average U-value for walls, roof, etc.
+        average_u_value = 0.08  # Average U-value for walls, roof, etc. (improved insulation)
         # Approximate envelope area (walls + ceiling)
         envelope_area = 2 * math.sqrt(self.zone_area) * 8 + self.zone_area
-        envelope_transfer = average_u_value * \
-            envelope_area * (outdoor_temp - self.zone_temp)
+        # Temperature difference driving heat transfer
+        temp_diff_envelope = outdoor_temp - self.zone_temp
+        # Add non-linearity to model better insulation at temperature extremes
+        if abs(temp_diff_envelope) > 30:
+            # Diminishing returns on heat transfer at extreme temperature differences
+            temp_diff_envelope = 30 * (1 + math.log10(abs(temp_diff_envelope) / 30)) * (1 if temp_diff_envelope > 0 else -1)
+        
+        envelope_transfer = average_u_value * envelope_area * temp_diff_envelope
 
-        # 2. Solar heat gain
+        # 2. Solar heat gain - with improved modeling for time of day
         solar_gain = self.calculate_solar_gain(time_of_day)
 
         # 3. Internal heat gains from people
@@ -337,21 +389,70 @@ class VAVBox:
         air_heat_capacity = air_mass * AIR_SPECIFIC_HEAT  # BTU/°F
 
         # Maximum cooling/heating rate from VAV in BTU/hr
-        max_vav_rate = self.current_airflow * 60 * AIR_DENSITY * \
-            AIR_SPECIFIC_HEAT * \
-            abs(self.get_discharge_air_temp() - self.zone_temp)
-        vav_effect = -max_vav_rate * vav_cooling_effect if self.zone_temp > self.get_discharge_air_temp() else max_vav_rate * \
-            vav_cooling_effect
+        discharge_temp = self.get_discharge_air_temp()
+        temp_diff = discharge_temp - self.zone_temp  # Positive if discharge is warmer, negative if cooler
+        
+        # Calculate efficiency factor that decreases as temperature differential increases
+        # This represents diminishing returns at extreme temperature differences
+        efficiency = 1.0
+        if abs(temp_diff) > 15:
+            efficiency = 1.0 - (abs(temp_diff) - 15) / 30  # Efficiency drops as temp diff increases
+            efficiency = max(0.5, efficiency)  # Minimum 50% efficiency
+            
+        # VAV effect is based on airflow, temperature difference, and efficiency
+        max_vav_rate = self.current_airflow * 60 * AIR_DENSITY * AIR_SPECIFIC_HEAT * abs(temp_diff) * efficiency
+        
+        # Determine if we're cooling or heating - use the sign of vav_cooling_effect to determine direction
+        if vav_cooling_effect < 0:
+            # Heating effect (positive value means adding heat)
+            vav_effect = max_vav_rate * abs(vav_cooling_effect)
+        else:
+            # Cooling effect (negative value means removing heat)
+            vav_effect = -max_vav_rate * vav_cooling_effect
+            
+        # Add baseline heating and cooling effects that represent natural equilibrium conditions
+        # This ensures the zone doesn't get unrealistically hot or cold
+        
+        # Baseline heating (from building systems, internal gains, etc.)
+        if self.zone_temp < self.zone_temp_setpoint - 2:
+            # Scale heating based on how far below setpoint we are - more aggressive when colder
+            temp_diff_from_setpoint = self.zone_temp_setpoint - self.zone_temp
+            # Non-linear response - proportional to square of temperature difference
+            baseline_heating = 500 * (temp_diff_from_setpoint ** 2) / 4
+            # Cap the heating boost
+            baseline_heating = min(5000, baseline_heating)
+            vav_effect += baseline_heating
+            
+        # Baseline cooling (radiation to environment, natural convection, etc.)
+        if self.zone_temp > self.zone_temp_setpoint + 2:
+            # Scale cooling based on how far above setpoint we are - more aggressive when hotter
+            temp_diff_from_setpoint = self.zone_temp - self.zone_temp_setpoint
+            # Non-linear response - proportional to square of temperature difference
+            baseline_cooling = -400 * (temp_diff_from_setpoint ** 2) / 4
+            # Cap the cooling boost
+            baseline_cooling = max(-4000, baseline_cooling)
+            vav_effect += baseline_cooling
 
         # Sum all heat gains/losses (BTU/hr)
-        net_heat_rate = envelope_transfer + solar_gain + \
-            occupancy_gain + equipment_gain + vav_effect
+        net_heat_rate = envelope_transfer + solar_gain + occupancy_gain + equipment_gain + vav_effect
 
-        # Convert to temperature change (°F) over the specified time period
-        # Adjusted by thermal mass factor (higher thermal mass = slower temperature change)
+        # Apply thermal mass effects with improved modeling
+        # Higher thermal mass leads to slower temperature changes
+        # Add non-linearity to better model thermal inertia
         hours = minutes / 60
-        temperature_change = (net_heat_rate * hours) / \
-            (air_heat_capacity * self.thermal_mass)
+        
+        # Scale the temperature change rate based on deviation from setpoint
+        # This creates a natural tendency for temperatures to move toward the setpoint range
+        setpoint_deviation = abs(self.zone_temp - self.zone_temp_setpoint)
+        thermal_mass_factor = self.thermal_mass * (1 + 0.2 * setpoint_deviation)
+        
+        # Calculate temperature change with the enhanced thermal mass model
+        temperature_change = (net_heat_rate * hours) / (air_heat_capacity * thermal_mass_factor)
+        
+        # Add damping for stability - limit maximum temperature change in a single interval
+        max_change_per_hour = 5.0 / self.thermal_mass  # Maximum °F change per hour, adjusted for thermal mass
+        max_change = max_change_per_hour * hours
+        temperature_change = max(min(temperature_change, max_change), -max_change)
 
         return temperature_change
 
