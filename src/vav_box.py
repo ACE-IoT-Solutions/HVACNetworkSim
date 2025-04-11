@@ -89,7 +89,7 @@ class PIDController:
             # Calculate minutes elapsed since last update
             prev_hour, prev_minute = self.previous_time
             prev_minute_of_day = prev_hour * 60 + prev_minute
-            minutes_elapsed = (current_minute_of_day - prev_minute_of_day) % 1440
+            minutes_elapsed = (minute_of_day - prev_minute_of_day) % 1440
             if minutes_elapsed <= 0:
                 minutes_elapsed = 1  # Ensure at least 1 minute of simulation
                 
@@ -131,7 +131,7 @@ class PIDController:
         except Exception as e:
             print(f"\nError in {self.name} simulation: {e}")
         finally:
-            print(f"Simulation for {self.name} stopped at {hour:02d}:{minute:02d}.")
+            print(f"Simulation for {self.name} stopped at {current_hour:02d}:{current_minute:02d}.")
 
     def compute(self, process_variable, setpoint=None):
         """Compute PID output based on process variable and setpoint."""
