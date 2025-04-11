@@ -1,6 +1,7 @@
 from src.vav_box import PIDController
+from src.base_equip import BACPypesApplicationMixin
 
-class AirHandlingUnit:
+class AirHandlingUnit(BACPypesApplicationMixin):
     """
     Air Handling Unit (AHU) class that manages a collection of VAV boxes
     and controls supply air temperature. Supports chilled water or DX cooling.

@@ -1,8 +1,9 @@
 import math
 from datetime import datetime, timedelta
 from collections import defaultdict
+from .base_equip import BACPypesApplicationMixin
 
-class Building:
+class Building(BACPypesApplicationMixin):
     """
     Building class that serves as a container for all HVAC equipment and 
     manages building-wide data such as outdoor conditions and solar position.

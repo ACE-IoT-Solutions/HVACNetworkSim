@@ -1,8 +1,8 @@
 import math
 import json
 
-from bacpypes3.app import Application
-from bacpypes3.object import AnalogValueObject, BinaryValueObject, MultiStateValueObject, CharacterStringValueObject
+from .base_equip import BACPypesApplicationMixin
+
 
 
 class PIDController:
@@ -101,7 +101,7 @@ class PIDController:
         self.history_index = 0
 
 
-class VAVBox:
+class VAVBox(BACPypesApplicationMixin):
     """Single zone VAV box model with reheat capability."""
 
     def __init__(self, name, min_airflow, max_airflow, zone_temp_setpoint,
@@ -731,143 +731,6 @@ class VAVBox:
                 f"Reheat={self.reheat_valve_position*100:.0f}%, "
                 f"Occupancy={self.occupancy}")
 
-    def create_bacpypes3_device(self, device_id=None, device_name=None,
-                                network_interface_name="vlan", mac_address="0x01", virtual_network=None):
-        """
-        Create a BACpypes3 device representation of this VAV box.
-
-        Args:
-            device_id: BACnet device ID (defaults to a hash of the VAV name)
-            device_name: BACnet device name (defaults to VAV name)
-            network_interface_name: Name of the virtual network to connect to
-            mac_address: MAC address for this device on the virtual network
-
-        Returns:
-            BACpypes3 Application object
-        """
-
-        # Create JSON-compatible configuration list for the application
-        # Following the pattern from ip-to-vlan.json
-        app_config = [
-            # Device Object
-            {
-                "apdu-segment-timeout": 1000,
-                "apdu-timeout": 3000,
-                "application-software-version": "1.0",
-                "database-revision": 1,
-                "firmware-revision": "N/A",
-                "max-apdu-length-accepted": 1024,
-                "model-name": "N/A",
-                "number-of-apdu-retries": 3,
-                "object-identifier": f"device,{device_id}",
-                "object-name": device_name,
-                "object-type": "device",
-                "protocol-revision": 22,
-                "protocol-version": 1,
-                "segmentation-supported": "segmented-both",
-                "system-status": "operational",
-                "vendor-identifier": 999,
-                "vendor-name": "ACEHVACNetwork",
-                "description": f"Virtual VAV Box - {self.name}"
-            },
-            # Network Port
-            {
-                "changes-pending": False,
-                "mac-address": mac_address,
-                "network-interface-name": network_interface_name,
-                "network-type": "virtual",
-                "object-identifier": "network-port,1",
-                "object-name": "NetworkPort-1",
-                "object-type": "network-port",
-                "out-of-service": False,
-                "protocol-level": "bacnet-application",
-                "reliability": "no-fault-detected"
-            },
-        ]
-
-        # Create the application using from_json method (which is synchronous)
-        app = Application.from_json(app_config)
-
-        # Add data points to the application config
-        point_id = 3  # Start at ID 3 since 1 and 2 are used by device and network-port
-
-        # Get current values
-        process_vars = self.get_process_variables()
-        metadata = self.get_process_variables_metadata()
-
-        # Create and add objects for each variable
-        for point_name, point_meta in metadata.items():
-            # Skip complex types
-            if point_meta["type"] not in (float, int, bool, str):
-                continue
-
-            # Get current value
-            value = process_vars.get(point_name)
-            if value is None:
-                continue
-
-            # Create appropriate object config based on type
-            if point_meta["type"] in (float, int):
-                # Get units
-                units = "no-units"
-                if "unit" in point_meta:
-                    # Direct unit conversion
-                    unit_text = point_meta["unit"]
-                    if unit_text in ("°F", "degF"):
-                        units = "degrees-fahrenheit"
-                    elif unit_text in ("CFM", "ft³/min"):
-                        units = "cubic-feet-per-minute"
-                    elif unit_text == "fraction":
-                        units = "percent"
-                    elif unit_text == "sq ft":
-                        units = "square-feet"
-                    elif unit_text == "cu ft":
-                        units = "cubic-feet"
-
-                # Create analog value object
-
-                point_obj = AnalogValueObject(objectIdentifier=f"analog-value,{point_id}",
-                                              objectName=point_name,
-                                              description=point_meta["label"],
-                                              presentValue=float(value),
-                                              units=units
-                                              )
-                app.add_object(point_obj)
-
-            elif point_meta["type"] == bool:
-                # Create binary value object
-                point_obj = BinaryValueObject(objectIdentifier=f"binary-value,{point_id}",
-                                              objectName=point_name,
-                                              description=point_meta["label"],
-                                              presentValue=bool(value)
-                                              )
-            elif point_meta["type"] == str:
-                point_obj = MultiStateValueObject(objectIdentifier=f"multi-state-value,{point_id}",
-                                                  objectName=point_name,
-                                                  description=point_meta["label"],
-                                                  presentValue=point_meta["options"].index(
-                                                      value) + 1,
-                                                  numberOfStates=len(
-                                                      point_meta["options"]),
-                                                  stateText=point_meta["options"]
-                                                  )
-            else:
-                point_obj = CharacterStringValueObject(objectIdentifier=f"character-string-value,{point_id}",
-                                                       objectName=point_name,
-                                                       description=point_meta["label"],
-                                                       presentValue=str(value)
-                                                       )
-                app.add_object(point_obj)
-            point_id += 1
-
-        # Store a reference to the VAV box in the app for updates
-        app.vav_box = self
-
-        # In BACpypes3, the Application is already running when created
-        # No explicit startup() call needed
-
-        # Return the application
-        return app
 
     async def update_bacpypes3_device(self, app):
         """
@@ -876,74 +739,81 @@ class VAVBox:
         Args:
             app: BACpypes3 Application object created by create_bacpypes3_device
         """
-        # Get current process variables
-        process_vars = self.get_process_variables()
-        metadata = self.get_process_variables_metadata()
+        if  app is None:
+            return
+            
+        try:
+            # Get current process variables
+            process_vars = self.get_process_variables()
+            metadata = self.get_process_variables_metadata()
+    
+            # Keep track of updated points
+            updated_points = 0
+    
+            # For each object in the application
+            for obj in app.objectIdentifier.values():
+                # Skip if not a point object with objectName
+                if not hasattr(obj, "objectName"):
+                    continue
+    
+                point_name = obj.objectName
+    
+                # Skip if this is not one of our process variables
+                if point_name not in process_vars:
+                    continue
+    
+                value = process_vars[point_name]
+    
+                # Skip complex types
+                if isinstance(value, (dict, list, tuple)) or value is None:
+                    continue
+    
+                try:
+                    # Handle different object types appropriately
+                    if hasattr(obj, "objectType"):
+                        obj_type = obj.objectType
+    
+                        # For multi-state values, convert string to index
+                        if obj_type == "multi-state-value" and point_name in metadata:
+                            if "options" in metadata[point_name]:
+                                options = metadata[point_name]["options"]
+                                if value in options:
+                                    # 1-based index for BACnet MSV
+                                    idx = options.index(value) + 1
+                                    obj.presentValue = idx
+                                    updated_points += 1
+                                    continue
+    
+                        # For analog values, ensure float
+                        elif obj_type == "analog-value" and (isinstance(value, (int, float))):
+                            obj.presentValue = float(value)
+                            updated_points += 1
+                            continue
+    
+                        # For binary values, ensure boolean
+                        elif obj_type == "binary-value":
+                            obj.presentValue = bool(value)
+                            updated_points += 1
+                            continue
+    
+                        # For our string properties represented as analog values
+                        # We'll just update the length as a proxy for the actual string
+                        # In a real implementation, we'd need a better way to handle strings
+                        elif obj_type == "analog-value" and obj.description and "string length" in obj.description:
+                            obj.presentValue = float(len(str(value)))
+                            updated_points += 1
+                            continue
+    
+                    # Fallback to direct assignment if specific handling not applied
+                    obj.presentValue = value
+                    updated_points += 1
+    
+                except Exception as e:
+                    print(f"Error updating {point_name}: {e}")
 
-        # Keep track of updated points
-        updated_points = 0
-
-        # For each object in the application
-        for obj in app.objectIdentifier.values():
-            # Skip if not a point object with objectName
-            if not hasattr(obj, "objectName"):
-                continue
-
-            point_name = obj.objectName
-
-            # Skip if this is not one of our process variables
-            if point_name not in process_vars:
-                continue
-
-            value = process_vars[point_name]
-
-            # Skip complex types
-            if isinstance(value, (dict, list, tuple)) or value is None:
-                continue
-
-            try:
-                # Handle different object types appropriately
-                if hasattr(obj, "objectType"):
-                    obj_type = obj.objectType
-
-                    # For multi-state values, convert string to index
-                    if obj_type == "multi-state-value" and point_name in metadata:
-                        if "options" in metadata[point_name]:
-                            options = metadata[point_name]["options"]
-                            if value in options:
-                                # 1-based index for BACnet MSV
-                                idx = options.index(value) + 1
-                                obj.presentValue = idx
-                                updated_points += 1
-                                continue
-
-                    # For analog values, ensure float
-                    elif obj_type == "analog-value" and (isinstance(value, (int, float))):
-                        obj.presentValue = float(value)
-                        updated_points += 1
-                        continue
-
-                    # For binary values, ensure boolean
-                    elif obj_type == "binary-value":
-                        obj.presentValue = bool(value)
-                        updated_points += 1
-                        continue
-
-                    # For our string properties represented as analog values
-                    # We'll just update the length as a proxy for the actual string
-                    # In a real implementation, we'd need a better way to handle strings
-                    elif obj_type == "analog-value" and obj.description and "string length" in obj.description:
-                        obj.presentValue = float(len(str(value)))
-                        updated_points += 1
-                        continue
-
-                # Fallback to direct assignment if specific handling not applied
-                obj.presentValue = value
-                updated_points += 1
-
-            except Exception as e:
-                print(f"Error updating {point_name}: {e}")
-
-        # Print update summary
-        if updated_points > 0:
-            print(f"Updated {updated_points} BACnet points for {self.name}")
+            # Print update summary
+            if updated_points > 0:
+                print(f"Updated {updated_points} BACnet points for {self.name}")
+                
+        except Exception as e:
+            print(f"Error updating BACnet device for {self.name}: {e}")

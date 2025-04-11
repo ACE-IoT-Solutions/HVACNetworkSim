@@ -1,6 +1,8 @@
 import math
 
-class CoolingTower:
+from .base_equip import BACPypesApplicationMixin
+
+class CoolingTower(BACPypesApplicationMixin):
     """
     Cooling Tower class that models the performance of an evaporative cooling tower
     used to reject heat from water-cooled chillers.
@@ -47,6 +49,23 @@ class CoolingTower:
         
         # Energy tracking
         self.energy_consumption = 0  # kWh
+
+
+    @property
+    def current_range(self):
+        self.entering_water_temp - self.leaving_water_temp
+    
+    @property
+    def outdoor_wet_bulb(self):
+        return self.current_wet_bulb
+    
+    @property
+    def condenser_water_supply_temp(self):
+        return self.leaving_water_temp
+    
+    @property
+    def condenser_water_return_temp(self):
+        return self.entering_water_temp
     
     def update_load(self, load, entering_water_temp, ambient_wet_bulb, condenser_water_flow, auto_adjust_fan=True):
         """
@@ -419,3 +438,8 @@ class CoolingTower:
                 f"Approach={self.calculate_approach():.1f}°F, "
                 f"Range={self.calculate_range():.1f}°F, "
                 f"Fan={self.fan_speed:.1f}%")
+                
+    def get_condenser_water_supply_temp(self):
+        """Calculate condenser water supply temperature (leaving water temperature)."""
+        # This is the leaving water temperature
+        return self.leaving_water_temp

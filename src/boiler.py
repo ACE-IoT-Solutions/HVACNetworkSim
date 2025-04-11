@@ -1,6 +1,7 @@
 import math
+from .base_equip import BACPypesApplicationMixin
 
-class Boiler:
+class Boiler(BACPypesApplicationMixin):
     """
     Boiler class that models the performance of gas-fired or electric boilers.
     """

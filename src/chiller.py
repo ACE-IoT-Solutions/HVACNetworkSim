@@ -1,6 +1,7 @@
 import math
+from .base_equip import BACPypesApplicationMixin
 
-class Chiller:
+class Chiller(BACPypesApplicationMixin):
     """
     Chiller class that models the performance of water-cooled or air-cooled chillers.
     """
@@ -130,6 +131,11 @@ class Chiller:
         self.old_setpoint = self.design_leaving_chilled_water_temp
         self.design_leaving_chilled_water_temp = setpoint
     
+    @property
+    def current_power(self):
+        """Get current power consumption in kW."""
+        return self.calculate_power_consumption()
+
     def calculate_power_consumption(self):
         """Calculate current power consumption in kW."""
         if self.current_load == 0 or self.current_cop == 0:
