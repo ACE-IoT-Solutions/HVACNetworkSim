@@ -196,9 +196,9 @@ class BACPypesApplicationMixin():
             # Skip complex types
             if point_meta["type"] not in (float, int, bool, str):
                 continue
-            if point_name == "name":
+            if point_name in ("name", "location", "timezone"):
                 continue
-            print(f"Adding {point_name} ({point_meta['label']})")
+            # print(f"Adding {point_name} ({point_meta['label']})")
 
             # Get current value
             value = process_vars.get(point_name)

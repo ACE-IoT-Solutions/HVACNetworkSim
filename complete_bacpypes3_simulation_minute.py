@@ -59,107 +59,6 @@ data_log = defaultdict(list)  # For storing simulation data
 start_time = None
 
 
-# async def update_bacnet_device(app):
-#     """
-#     Update a BACnet device with current device state.
-    
-#     Args:
-#         app: BACpypes3 Application object with device_object reference
-#     """
-#     if not BACPYPES_AVAILABLE or not hasattr(app, 'device_object'):
-#         return
-        
-#     # device_obj = app.device_object
-#     device_obj = app.sim_device
-    
-#     try:
-#         # Get updated process variables
-#         process_vars = device_obj.get_process_variables()
-        
-#         # Track number of updated points
-#         update_count = 0
-        
-#         # For each object in the application
-#         for obj in app.objectIdentifier.values():
-#             try:
-#                 # Skip if not a point object with objectName
-#                 if not hasattr(obj, "objectName"):
-#                     continue
-                
-#                 point_name = obj.objectName
-                
-#                 # Skip if this is not one of our process variables
-#                 if point_name not in process_vars:
-#                     continue
-                    
-#                 value = process_vars[point_name]
-                
-#                 # Skip complex types
-#                 if isinstance(value, (dict, list, tuple)) or value is None:
-#                     continue
-                    
-#                 # Handle different object types appropriately
-#                 if hasattr(obj, "objectType"):
-#                     obj_type = obj.objectType
-                    
-#                     # For multi-state values, convert string to index
-#                     if obj_type == "multi-state-value" and hasattr(obj, "stateText"):
-#                         state_text = obj.stateText
-#                         if value in state_text:
-#                             # 1-based index for BACnet MSV
-#                             idx = state_text.index(value) + 1
-#                             # Only update if changed, to reduce network traffic
-#                             if obj.presentValue != idx:
-#                                 obj.presentValue = idx
-#                                 update_count += 1
-#                             continue
-                            
-#                     # For analog values, ensure float
-#                     elif obj_type == "analog-value" and isinstance(value, (int, float)):
-#                         # Check if value has changed before updating
-#                         # Use a small epsilon for floating point comparison
-#                         if abs(obj.presentValue - float(value)) > 0.001:
-#                             obj.presentValue = float(value)
-#                             update_count += 1
-#                         continue
-                        
-#                     # For binary values, ensure boolean
-#                     elif obj_type == "binary-value" and isinstance(value, bool):
-#                         if obj.presentValue != bool(value):
-#                             obj.presentValue = bool(value)
-#                             update_count += 1
-#                         continue
-                        
-#                     # For string properties represented as analog values
-#                     elif obj_type == "analog-value" and obj.description and "string length" in obj.description:
-#                         str_len = float(len(str(value)))
-#                         if obj.presentValue != str_len:
-#                             obj.presentValue = str_len
-#                             update_count += 1
-#                         continue
-                        
-#                 # Fallback for direct assignment - only attempt if necessary
-#                 try:
-#                     # Need to check if the value is already equal
-#                     # This is a simplistic check that might not work for all types
-#                     if hasattr(obj, "presentValue") and obj.presentValue != value:
-#                         obj.presentValue = value
-#                         update_count += 1
-#                 except Exception:
-#                     pass
-#             except Exception as e:
-#                 print(f"Error updating point {getattr(obj, 'objectName', 'unknown')}: {e}")
-                
-#         # Only log if we actually updated something, to reduce console spam
-#         if update_count > 0:
-#             print(f"Updated {update_count} BACnet points for {device_obj.name}")
-        
-#     except Exception as e:
-#         print(f"Error updating BACnet device: {e}")
-        
-#     # Add a small delay to avoid overwhelming the BACnet stack
-#     await asyncio.sleep(0.05)
-
 async def create_building_controller(network_name, device_id=1000, mac_address="0x01"):
     """Create a controller device that can interact with the HVAC equipment."""
     if not BACPYPES_AVAILABLE:
@@ -366,7 +265,7 @@ async def simulate_vav_box(vav, app, weather_data, minutes_per_second=1, start_t
     previous_time = (current_hour, current_minute)
     
     # Constant AHU supply air temperature
-    supply_air_temp = 55  # °F
+    supply_air_temp = vav.ahu_supply_air_temp  # °F
     
     # Calculate sleep time for simulation speed
     sleep_time = 1 / minutes_per_second  # seconds per simulated minute
@@ -454,12 +353,12 @@ async def simulate_vav_box(vav, app, weather_data, minutes_per_second=1, start_t
             if app:
                 await vav.update_bacnet_device()
             
-            # Log data for later analysis
-            data_log["time"].append(f"{hour:02d}:{minute:02d}")
-            data_log[f"{vav.name}_temp"].append(vav.zone_temp)
-            data_log[f"{vav.name}_mode"].append(vav.mode)
-            data_log[f"{vav.name}_airflow"].append(vav.current_airflow)
-            data_log["outdoor_temp"].append(outdoor_temp)
+            # # Log data for later analysis
+            # data_log["time"].append(f"{hour:02d}:{minute:02d}")
+            # data_log[f"{vav.name}_temp"].append(vav.zone_temp)
+            # data_log[f"{vav.name}_mode"].append(vav.mode)
+            # data_log[f"{vav.name}_airflow"].append(vav.current_airflow)
+            # data_log["outdoor_temp"].append(outdoor_temp)
             
             # Display current simulation time and key values
             # Only print updates every 5 minutes to reduce console output
@@ -565,11 +464,11 @@ async def simulate_ahu(ahu, app, weather_data, vav_boxes, minutes_per_second=1, 
             if app:
                 await ahu.update_bacnet_device()
                 
-            # Log data
-            data_log[f"{ahu.name}_supply_temp"].append(ahu.current_supply_air_temp)
-            data_log[f"{ahu.name}_airflow"].append(ahu.current_total_airflow)
-            data_log[f"{ahu.name}_cooling"].append(ahu.cooling_valve_position)
-            data_log[f"{ahu.name}_heating"].append(ahu.heating_valve_position)
+            # # Log data
+            # data_log[f"{ahu.name}_supply_temp"].append(ahu.current_supply_air_temp)
+            # data_log[f"{ahu.name}_airflow"].append(ahu.current_total_airflow)
+            # data_log[f"{ahu.name}_cooling"].append(ahu.cooling_valve_position)
+            # data_log[f"{ahu.name}_heating"].append(ahu.heating_valve_position)
             
             # Display current simulation time and key values
             # Only print updates every 5 minutes to reduce console output
@@ -673,17 +572,17 @@ async def simulate_chilled_water_plant(chiller, cooling_tower, app_chiller, app_
                 await cooling_tower.update_bacnet_device()
                 
             # Log data
-            data_log[f"{chiller.name}_load"].append(chiller.current_load)
-            data_log[f"{chiller.name}_cop"].append(chiller.current_cop)
+            # data_log[f"{chiller.name}_load"].append(chiller.current_load)
+            # data_log[f"{chiller.name}_cop"].append(chiller.current_cop)
             # Calculate power consumption if attribute doesn't exist
             power = getattr(chiller, 'current_power', 0)
             if power == 0 and hasattr(chiller, 'calculate_power_consumption'):
                 power = chiller.calculate_power_consumption()
-            data_log[f"{chiller.name}_power"].append(power)
+            # data_log[f"{chiller.name}_power"].append(power)
             
-            if cooling_tower:
-                data_log[f"{cooling_tower.name}_approach"].append(cooling_tower.current_approach)
-                data_log[f"{cooling_tower.name}_fan_speed"].append(cooling_tower.fan_speed)
+            # if cooling_tower:
+            #     data_log[f"{cooling_tower.name}_approach"].append(cooling_tower.current_approach)
+            #     data_log[f"{cooling_tower.name}_fan_speed"].append(cooling_tower.fan_speed)
             
             # Display current simulation time and key values
             # Only print updates every 5 minutes to reduce console output
@@ -760,8 +659,8 @@ async def simulate_hot_water_plant(boiler, app_boiler, weather_data, vav_boxes, 
                 await boiler.update_bacnet_device()
                 
             # Log data
-            data_log[f"{boiler.name}_load"].append(boiler.current_load)
-            data_log[f"{boiler.name}_efficiency"].append(boiler.current_efficiency)
+            # data_log[f"{boiler.name}_load"].append(boiler.current_load)
+            # data_log[f"{boiler.name}_efficiency"].append(boiler.current_efficiency)
             
             # Display current simulation time and key values
             # Only print updates every 5 minutes to reduce console output
@@ -917,40 +816,40 @@ async def controller_monitoring(controller_app, monitoring_interval=10):
     finally:
         print("Controller monitoring stopped.")
 
-async def write_data_log():
-    """Write the data log to a JSON file when the simulation ends."""
-    global data_log, start_time
+# async def write_data_log():
+#     """Write the data log to a JSON file when the simulation ends."""
+#     global data_log, start_time
     
-    if data_log:
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"simulation_data_{timestamp}.json"
+#     if data_log:
+#         try:
+#             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+#             filename = f"simulation_data_{timestamp}.json"
             
-            with open(filename, 'w') as f:
-                json.dump(data_log, f, indent=2)
+#             with open(filename, 'w') as f:
+#                 json.dump(data_log, f, indent=2)
                 
-            print(f"\nSimulation data written to {filename}")
+#             print(f"\nSimulation data written to {filename}")
             
-            # Also write a simple summary report
-            simulation_duration = time.time() - start_time if start_time else 0
+#             # Also write a simple summary report
+#             simulation_duration = time.time() - start_time if start_time else 0
             
-            summary = {
-                "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "duration_seconds": round(simulation_duration, 1),
-                "data_points_collected": len(data_log["time"]) if "time" in data_log else 0,
-                "equipment_simulated": [key.split('_')[0] for key in data_log.keys() 
-                                       if '_' in key and key.split('_')[1] in 
-                                       ('temp', 'load', 'cop', 'airflow')]
-            }
+#             summary = {
+#                 "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+#                 "duration_seconds": round(simulation_duration, 1),
+#                 "data_points_collected": len(data_log["time"]) if "time" in data_log else 0,
+#                 "equipment_simulated": [key.split('_')[0] for key in data_log.keys() 
+#                                        if '_' in key and key.split('_')[1] in 
+#                                        ('temp', 'load', 'cop', 'airflow')]
+#             }
             
-            summary_filename = f"simulation_summary_{timestamp}.json"
-            with open(summary_filename, 'w') as f:
-                json.dump(summary, f, indent=2)
+#             summary_filename = f"simulation_summary_{timestamp}.json"
+#             with open(summary_filename, 'w') as f:
+#                 json.dump(summary, f, indent=2)
                 
-            print(f"Simulation summary written to {summary_filename}")
+#             print(f"Simulation summary written to {summary_filename}")
             
-        except Exception as e:
-            print(f"Error writing data log: {e}")
+#         except Exception as e:
+#             print(f"Error writing data log: {e}")
 
 async def shutdown():
     """Clean shutdown of the application."""
@@ -1033,6 +932,12 @@ async def main():
             orientation=0,  # North-facing
             year_built=2005,
             timezone="America/Chicago"
+        )
+        building.create_bacpypes3_device(
+            device_id = 10000,
+            device_name = "Building Controller",
+            network_interface_name = network_name,
+            mac_address = "0x0ACE"
         )
         
         # Create VAV boxes for different zones
