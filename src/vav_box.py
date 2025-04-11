@@ -1,7 +1,10 @@
 import math
 import json
+import asyncio
+import random
 
 from .base_equip import BACPypesApplicationMixin
+
 
 
 
@@ -23,8 +26,112 @@ class PIDController:
         self.deadband = 0.5  # Small deadband to prevent micro-adjustments
         
         # Moving average for derivative calculation to reduce noise
+        self.previous_time = (0, 0)  # Previous hour and minute
         self.error_history = [0] * 3
         self.history_index = 0
+        self.exit_event = asyncio.Event()
+    
+    async def simulate_vav_box(self, weather_data, minute_of_day, day_of_week):
+        """Maintain an ongoing simulation of a VAV box, updating every minute."""
+        app = self.app
+        current_hour = minute_of_day // 60
+        current_minute = minute_of_day - current_hour * 60 
+        
+        # Constant AHU supply air temperature
+        supply_air_temp = self.ahu_supply_air_temp  # °F
+        
+        # Calculate sleep time for simulation speed
+        
+        # Office occupied from 8 AM to 6 PM
+        occupied_hours = [(8, 18)]
+        
+        print(f"\nStarting simulation for VAV box {self.name}...")
+        
+        try:
+            # Get weather for current minute
+            weather = weather_data[minute_of_day]
+            outdoor_temp = weather["temperature"]
+            
+            # Add some random variation to make it more realistic
+            outdoor_temp += random.uniform(-0.2, 0.2)  # Small variation
+            
+            # Check if occupied based on time of day
+            is_occupied = any(start <= current_hour < end for start, end in occupied_hours)
+            
+            # Set occupancy - higher during peak hours
+            if is_occupied:
+                # Peak occupancy hours 9-11am and 1-3pm
+                if (9 <= current_hour < 11) or (13 <= current_hour < 15):
+                    occupancy_count = 5 + random.randint(0, 10)  # 5-10 people
+                else:
+                    occupancy_count = 5
+            else:
+                occupancy_count = 0
+                
+            # Set occupancy
+            self.set_occupancy(occupancy_count)
+            
+            # Only reset if temperature is truly unrealistic
+            if self.zone_temp < 20 or self.zone_temp > 120:
+                print(f"Resetting unrealistic temperature: {self.zone_temp:.1f}°F to setpoint")
+                self.zone_temp = self.zone_temp_setpoint
+                
+            # Update VAV box with current conditions
+            self.update(self.zone_temp, supply_air_temp)
+            
+            # Simulate thermal behavior for the time elapsed since last update
+            vav_effect = 0
+            if self.mode == "cooling":
+                vav_effect = self.damper_position  # Positive effect for cooling
+            elif self.mode == "heating" and self.has_reheat:
+                vav_effect = -self.reheat_valve_position  # Negative effect for heating
+                
+            # Calculate minutes elapsed since last update
+            prev_hour, prev_minute = self.previous_time
+            prev_minute_of_day = prev_hour * 60 + prev_minute
+            minutes_elapsed = (current_minute_of_day - prev_minute_of_day) % 1440
+            if minutes_elapsed <= 0:
+                minutes_elapsed = 1  # Ensure at least 1 minute of simulation
+                
+            # Cap the maximum simulation step to avoid large temperature jumps
+            minutes_elapsed = min(minutes_elapsed, 10)
+                
+            temp_change = self.calculate_thermal_behavior(
+                minutes=minutes_elapsed,
+                outdoor_temp=outdoor_temp,
+                vav_cooling_effect=vav_effect,
+                time_of_day=(current_hour, current_minute)
+            )
+            
+            # Our thermal model now handles rate-of-change limits internally
+            # This is now redundant, but we'll keep a more generous limit as a safety check
+            max_allowed_change = 1.0  # Maximum 1°F change per minute to prevent simulation errors
+            temp_change = max(min(temp_change, max_allowed_change), -max_allowed_change)
+            
+            # Update zone temperature with calculated change
+            self.zone_temp += temp_change
+            
+            # Save current time for next update
+            self.previous_time = (current_hour, current_minute)
+            
+            # Update the BACnet device
+            if app:
+                await self.update_bacnet_device()
+            
+            # Display current simulation time and key values
+            # Only print updates every 5 minutes to reduce console output
+            if current_minute % 5 == 0:
+                time_str = f"{current_hour:02d}:{current_minute:02d}"
+                print(f"{self.name} - Time: {time_str}, Outdoor: {outdoor_temp:.1f}°F, " + 
+                    f"Zone: {self.zone_temp:.1f}°F, Mode: {self.mode}, " +
+                    f"Airflow: {self.current_airflow:.0f} CFM")
+            
+        except asyncio.CancelledError:
+            print(f"\nSimulation for {self.name} cancelled.")
+        except Exception as e:
+            print(f"\nError in {self.name} simulation: {e}")
+        finally:
+            print(f"Simulation for {self.name} stopped at {hour:02d}:{minute:02d}.")
 
     def compute(self, process_variable, setpoint=None):
         """Compute PID output based on process variable and setpoint."""
