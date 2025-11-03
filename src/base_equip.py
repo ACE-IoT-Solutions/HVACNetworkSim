@@ -38,7 +38,7 @@ class BACPypesApplicationMixin():
                     if not hasattr(obj, "objectName"):
                         continue
 
-                    point_name = obj.objectName
+                    point_name: str = obj.objectName
 
                     # Skip if this is not one of our process variables
                     if point_name not in process_vars:
@@ -115,16 +115,16 @@ class BACPypesApplicationMixin():
         await asyncio.sleep(0.05)
 
     def create_bacpypes3_device(self, device_id=None, device_name=None,
-                                network_interface_name="vlan", mac_address="0x01", virtual_network=None):
+                                network_interface_name="vlan", mac_address="0x01"):
         """
         Create a BACpypes3 device representation of this VAV box.
 
         Args:
             device_id: BACnet device ID (defaults to a hash of the VAV name)
             device_name: BACnet device name (defaults to VAV name)
-            network_interface_name: Name of the virtual network to connect to
+            network_interface_name: Name of the virtual network to connect to. This name
+                                    must match an existing VirtualNetwork instance.
             mac_address: MAC address for this device on the virtual network
-
         Returns:
             BACpypes3 Application object
         """
@@ -177,8 +177,12 @@ class BACPypesApplicationMixin():
         ]
 
         try:
-            # Create the application using from_json method (which is synchronous)
+            # Create the application using from_json method.
+            # It's assumed that if a VirtualNetwork with the specified
+            # network_interface_name exists, Application.from_json will use it.
             app = Application.from_json(app_config)
+            if app and device_name: # Ensure app was created and device_name is available
+                setattr(app, 'name', device_name) # Set the name attribute for VirtualNetwork.add_node
         except Exception as e:
             print(f"Error creating BACnet device: {e}")
             print(traceback.format_exc())
@@ -231,7 +235,6 @@ class BACPypesApplicationMixin():
                                               presentValue=float(value),
                                               units=units
                                               )
-                app.add_object(point_obj)
 
             elif point_meta["type"] == bool:
                 # Create binary value object
@@ -256,7 +259,7 @@ class BACPypesApplicationMixin():
                                                        description=point_meta["label"],
                                                        presentValue=str(value)
                                                        )
-                app.add_object(point_obj)
+            app.add_object(point_obj)
             point_id += 1
 
         # Store a reference to the VAV box in the app for updates

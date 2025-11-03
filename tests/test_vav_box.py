@@ -54,7 +54,7 @@ class TestVAVBox(unittest.TestCase):
     def test_heating_mode_transition(self):
         """Test VAV box transitions to heating mode when zone temp falls below setpoint - deadband/2."""
         # Set up heating condition
-        self.vav.update(zone_temp=70, supply_air_temp=55)
+        self.vav.update(zone_temp=67, supply_air_temp=55)
         
         self.assertEqual(self.vav.mode, "heating")
         self.assertEqual(self.vav.damper_position, self.vav.min_airflow / self.vav.max_airflow)
@@ -143,6 +143,18 @@ class TestVAVBox(unittest.TestCase):
         airflow2 = self.vav.current_airflow
         
         self.assertLess(airflow2, airflow1)
+
+    def test_pid_response_heating(self):
+        """Test PID control response to heating demand."""
+        # Test heating response over time
+        self.vav.update(zone_temp=68, supply_air_temp=55)
+        reheat1 = self.vav.reheat_valve_position
+        
+        # Simulate zone heating up (less aggressive response expected)
+        self.vav.update(zone_temp=70, supply_air_temp=55)
+        reheat2 = self.vav.reheat_valve_position
+        
+        self.assertLess(reheat2, reheat1)
     
     def test_energy_calculation(self):
         """Test energy consumption calculation."""

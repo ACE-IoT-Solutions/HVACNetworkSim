@@ -1,0 +1,6 @@
+project_includes = ["**/*"]
+project_excludes = [
+    "**/.[!/.]*",
+    "**/*venv/**/*",
+]
+python_interpreter = ".venv/bin/python"
