@@ -1,0 +1,84 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python tools
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Project specific
+*.png
+output/
+.python-version
+
+# Hive Mind
+.hive-mind/
+.claude-flow/
+.claude/
+
+# Example files (not needed in container)
+example_*.py
+complete_bacpypes3_simulation.py
+complete_bacpypes3_simulation_minute.py
+brick_based_simulation.py
+brick_based_simulation_refactored.py
+temperature_convergence_test.py
+test_bacpypes_simulation.py
+ip-to-vlan.py
+
+# Brick schemas (not needed in container)
+*.ttl
+
+# Test files
+tests/

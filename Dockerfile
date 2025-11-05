@@ -1,21 +1,30 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    make \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /hvac
+# Set working directory
+WORKDIR /app
 
-# Copy source code
-COPY . /hvac/
+# Copy project files
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+COPY examples/ ./examples/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir bacpypes3
 
-# Expose BACnet/IP port (UDP 47808)
+# Expose BACnet port
 EXPOSE 47808/udp
 
-# Run the BACnet simulation with unbuffered output
-CMD ["python", "-u", "example_bacnet_simulation.py"]
+# Set environment variables
+ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PYTHONUNBUFFERED=1
+
+# Run the working BACnet simulation
+CMD ["python", "-u", "examples/example_bacnet_simulation.py"]

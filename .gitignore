@@ -55,3 +55,19 @@ coverage/
 *.lock
 *.orig
 *.png
+
+# Python version management
+.python-version
+
+# Python cache directories
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Hive Mind and Claude
+.hive-mind/
+.claude-flow/
+.claude/
+
+# Output directory
+output/

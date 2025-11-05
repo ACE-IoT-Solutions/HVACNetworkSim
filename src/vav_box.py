@@ -3,10 +3,7 @@ import json
 import asyncio
 import random
 
-from .base_equip import BACPypesApplicationMixin
-
-
-
+from base_equip import BACPypesApplicationMixin
 
 class PIDController:
     """Enhanced PID controller implementation with anti-windup and improved performance."""
@@ -188,7 +185,7 @@ class PIDController:
         self.previous_error = error
 
         # Calculate output
-        output = p_term + i_term + d_term
+        output = abs(p_term + i_term + d_term)
 
         # Clamp output to limits
         output = max(self.output_min, min(self.output_max, output))

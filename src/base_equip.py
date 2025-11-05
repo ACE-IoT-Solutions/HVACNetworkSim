@@ -38,7 +38,7 @@ class BACPypesApplicationMixin():
                     if not hasattr(obj, "objectName"):
                         continue
 
-                    point_name = obj.objectName
+                    point_name: str = obj.objectName
 
                     # Skip if this is not one of our process variables
                     if point_name not in process_vars:
@@ -115,14 +115,21 @@ class BACPypesApplicationMixin():
         await asyncio.sleep(0.05)
 
     def create_bacpypes3_device(self, device_id=None, device_name=None,
-                                ip_address="0.0.0.0/24"):
+                                ip_address=None,
+                                network_interface_name=None, mac_address=None):
         """
         Create a BACpypes3 device representation of this VAV box.
+
+        Supports two modes:
+        1. IPv4 BACnet/IP mode: Provide ip_address for real network communication
+        2. Virtual Network mode: Provide network_interface_name and mac_address for testing
 
         Args:
             device_id: BACnet device ID (defaults to a hash of the VAV name)
             device_name: BACnet device name (defaults to VAV name)
-            ip_address: IP address with CIDR notation (e.g., "172.26.0.20/16")
+            ip_address: IP address with CIDR notation (e.g., "172.26.0.20/16") for BACnet/IP mode
+            network_interface_name: Name of the virtual network for testing mode
+            mac_address: MAC address for virtual network testing mode
 
         Returns:
             BACpypes3 Application object
@@ -135,10 +142,22 @@ class BACPypesApplicationMixin():
         if device_name is None:
             device_name = f"VAV-{self.name}"
 
-        print(f"Creating {device_name} with ID {device_id} on IP {ip_address}")
+        # Determine which mode to use
+        use_ip_mode = ip_address is not None
+        use_vlan_mode = network_interface_name is not None
+
+        if use_ip_mode:
+            print(f"Creating {device_name} with ID {device_id} on IP {ip_address}")
+        elif use_vlan_mode:
+            print(f"Creating {device_name} with ID {device_id} on VLAN {network_interface_name}")
+        else:
+            # Default to VLAN mode for backwards compatibility with tests
+            network_interface_name = "vlan"
+            mac_address = "0x01" if mac_address is None else mac_address
+            use_vlan_mode = True
+            print(f"Creating {device_name} with ID {device_id} on default VLAN")
 
         # Create JSON-compatible configuration list for the application
-        # Using IPv4 network type for actual BACnet/IP communication
         app_config = [
             # Device Object
             {
@@ -160,9 +179,13 @@ class BACPypesApplicationMixin():
                 "vendor-identifier": 999,
                 "vendor-name": "ACEHVACNetwork",
                 "description": f"Simulated VAV Box - {self.name}"
-            },
-            # Network Port for IPv4
-            {
+            }
+        ]
+
+        # Add network port configuration based on mode
+        if use_ip_mode:
+            # IPv4 BACnet/IP mode for real network communication
+            app_config.append({
                 "changes-pending": False,
                 "ip-address": ip_address.split('/')[0],  # Extract IP without CIDR
                 "ip-subnet-mask": "255.255.0.0",  # For /16 subnet
@@ -176,12 +199,19 @@ class BACPypesApplicationMixin():
                 "out-of-service": False,
                 "protocol-level": "bacnet-application",
                 "reliability": "no-fault-detected"
-            },
-        ]
+            })
 
         try:
-            # Create the application using from_json method (which is synchronous)
-            app = Application.from_json(app_config)
+            # Create the application using from_json method
+            if use_vlan_mode:
+                # Virtual network mode - let BACpypes3 connect to existing VLAN
+                app = Application.from_json(app_config, network_interface_name=network_interface_name)
+            else:
+                # IPv4 mode - configuration includes network port
+                app = Application.from_json(app_config)
+
+            if app and device_name:
+                setattr(app, 'name', device_name)
         except Exception as e:
             print(f"Error creating BACnet device: {e}")
             print(traceback.format_exc())
@@ -234,7 +264,6 @@ class BACPypesApplicationMixin():
                                               presentValue=float(value),
                                               units=units
                                               )
-                app.add_object(point_obj)
 
             elif point_meta["type"] == bool:
                 # Create binary value object
@@ -259,7 +288,7 @@ class BACPypesApplicationMixin():
                                                        description=point_meta["label"],
                                                        presentValue=str(value)
                                                        )
-                app.add_object(point_obj)
+            app.add_object(point_obj)
             point_id += 1
 
         # Store a reference to the VAV box in the app for updates
