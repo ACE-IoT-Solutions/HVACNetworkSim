@@ -115,15 +115,14 @@ class BACPypesApplicationMixin():
         await asyncio.sleep(0.05)
 
     def create_bacpypes3_device(self, device_id=None, device_name=None,
-                                network_interface_name="vlan", mac_address="0x01", virtual_network=None):
+                                ip_address="0.0.0.0/24"):
         """
         Create a BACpypes3 device representation of this VAV box.
 
         Args:
             device_id: BACnet device ID (defaults to a hash of the VAV name)
             device_name: BACnet device name (defaults to VAV name)
-            network_interface_name: Name of the virtual network to connect to
-            mac_address: MAC address for this device on the virtual network
+            ip_address: IP address with CIDR notation (e.g., "172.26.0.20/16")
 
         Returns:
             BACpypes3 Application object
@@ -132,13 +131,14 @@ class BACPypesApplicationMixin():
         if device_id is None:
             # Generate a hash from the name
             device_id = hash(self.name) % 4000000 + 1000  # Ensure positive ID
-        print(f"Creating {device_name} with ID {device_id}, MAC {mac_address}")
 
         if device_name is None:
             device_name = f"VAV-{self.name}"
 
+        print(f"Creating {device_name} with ID {device_id} on IP {ip_address}")
+
         # Create JSON-compatible configuration list for the application
-        # Following the pattern from ip-to-vlan.json
+        # Using IPv4 network type for actual BACnet/IP communication
         app_config = [
             # Device Object
             {
@@ -148,7 +148,7 @@ class BACPypesApplicationMixin():
                 "database-revision": 1,
                 "firmware-revision": "N/A",
                 "max-apdu-length-accepted": 1024,
-                "model-name": "N/A",
+                "model-name": "VAV-Simulator",
                 "number-of-apdu-retries": 3,
                 "object-identifier": f"device,{device_id}",
                 "object-name": device_name,
@@ -159,16 +159,19 @@ class BACPypesApplicationMixin():
                 "system-status": "operational",
                 "vendor-identifier": 999,
                 "vendor-name": "ACEHVACNetwork",
-                "description": f"Virtual VAV Box - {self.name}"
+                "description": f"Simulated VAV Box - {self.name}"
             },
-            # Network Port
+            # Network Port for IPv4
             {
                 "changes-pending": False,
-                "mac-address": hex_to_padded_octets(mac_address),
-                "network-interface-name": network_interface_name,
-                "network-type": "virtual",
+                "ip-address": ip_address.split('/')[0],  # Extract IP without CIDR
+                "ip-subnet-mask": "255.255.0.0",  # For /16 subnet
+                "ip-default-gateway": "172.26.0.1",
+                "bacnet-ip-mode": "normal",  # Normal BACnet/IP mode
+                "bacnet-ip-udp-port": 47808,
+                "network-type": "ipv4",
                 "object-identifier": "network-port,1",
-                "object-name": "NetworkPort-1",
+                "object-name": "BACnet-IP-Port",
                 "object-type": "network-port",
                 "out-of-service": False,
                 "protocol-level": "bacnet-application",
