@@ -1,4 +1,3 @@
-import math
 from .base_equip import BACPypesApplicationMixin
 
 class Boiler(BACPypesApplicationMixin):

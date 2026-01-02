@@ -5,10 +5,8 @@ This simulates a zone's thermal behavior over a 24-hour period.
 """
 
 import math
-import time
 from src.vav_box import VAVBox
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.dates import DateFormatter
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta

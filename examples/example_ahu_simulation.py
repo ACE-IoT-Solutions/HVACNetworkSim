@@ -4,7 +4,6 @@ Example simulation demonstrating an AHU controlling multiple VAV boxes.
 This simulates a small building HVAC system over a 24-hour period.
 """
 
-import time
 from src.vav_box import VAVBox
 from src.ahu import AirHandlingUnit
 import matplotlib.pyplot as plt

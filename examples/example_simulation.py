@@ -4,7 +4,6 @@ Example simulation demonstrating the VAV box model.
 This simulates a single zone VAV box over a 24-hour period.
 """
 
-import time
 from src.vav_box import VAVBox
 import matplotlib.pyplot as plt
 import numpy as np

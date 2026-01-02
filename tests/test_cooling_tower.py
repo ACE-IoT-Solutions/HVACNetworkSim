@@ -1,7 +1,4 @@
 import unittest
-import pytest
-import math
-from datetime import datetime
 from src.cooling_tower import CoolingTower
 
 class TestCoolingTower(unittest.TestCase):

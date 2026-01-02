@@ -14,14 +14,9 @@ import asyncio
 import math
 import random
 import signal
-import sys
-from datetime import datetime
 
 from bacpypes3.vlan import VirtualNetwork
 from bacpypes3.app import Application
-from bacpypes3.local.analog import AnalogValueObject
-from bacpypes3.local.binary import BinaryValueObject
-from bacpypes3.local.multistate import MultiStateValueObject
 
 from src.vav_box import VAVBox
 

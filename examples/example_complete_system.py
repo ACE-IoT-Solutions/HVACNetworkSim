@@ -5,11 +5,8 @@ This simulates a mixed-use building with multiple HVAC systems over a 24-hour pe
 """
 
 import math
-import time
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import numpy as np
 from matplotlib.gridspec import GridSpec
 
 from src.vav_box import VAVBox

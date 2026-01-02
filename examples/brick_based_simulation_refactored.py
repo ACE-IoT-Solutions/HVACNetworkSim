@@ -18,14 +18,11 @@ import asyncio
 import math
 import random
 import signal
-import sys
 import time
 from datetime import datetime, timedelta
 from collections import defaultdict
-import json
-from pathlib import Path
 import re
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List
 
 try:
     from rdflib import Graph, Namespace, URIRef, Literal
@@ -49,7 +46,7 @@ except ImportError:
     print("BACpypes3 not installed. Running in simulation-only mode.")
     BACPYPES_AVAILABLE = False
 
-from src.vav_box import VAVBox, PIDController
+from src.vav_box import VAVBox
 from src.ahu import AirHandlingUnit
 from src.cooling_tower import CoolingTower
 from src.chiller import Chiller
@@ -716,7 +713,7 @@ async def main():
         
         # Parse the BRICK schema file
         print("Parsing BRICK schema file: bldg1.ttl")
-        parser = BrickParser("bldg30.ttl")
+        parser = BrickParser("data/brick_schemas/bldg30.ttl")
         building_structure = parser.extract_all_equipment()
         
         print("\nExtracted building structure:")

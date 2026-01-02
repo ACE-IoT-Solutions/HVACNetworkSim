@@ -1,7 +1,5 @@
 import unittest
-import pytest
 import math
-from datetime import datetime, timedelta
 import sys
 import os
 from unittest import mock
@@ -426,7 +424,7 @@ class TestVAVBox(unittest.TestCase):
     def test_create_bacnet_device(self):
         """Test creation of a BAC0 device from VAV box."""
         # Import our mock BAC0 implementation
-        from mock_bac0 import BAC0, BACnetVirtualDevice, BACnetPoint
+        from mock_bac0 import BAC0
         
         # Use mock to patch the import inside the method
         with mock.patch.dict('sys.modules', {'BAC0': BAC0}):

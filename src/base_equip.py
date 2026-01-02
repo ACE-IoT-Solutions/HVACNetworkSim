@@ -200,15 +200,27 @@ class BACPypesApplicationMixin():
                 "protocol-level": "bacnet-application",
                 "reliability": "no-fault-detected"
             })
+        elif use_vlan_mode:
+            # Virtual network mode - let BACpypes3 connect to existing VLAN
+            # Ensure MAC address is properly formatted (even length hex)
+            formatted_mac = mac_address if mac_address else "0x01"
+            formatted_mac = hex_to_padded_octets(formatted_mac)
+
+            app_config.append({
+                "object-identifier": "network-port,1",
+                "object-name": "VirtualPort",
+                "object-type": "network-port",
+                "network-type": "virtual",
+                "network-interface-name": network_interface_name,
+                "mac-address": formatted_mac,
+                "out-of-service": False,
+                "protocol-level": "bacnet-application",
+                "reliability": "no-fault-detected"
+            })
 
         try:
             # Create the application using from_json method
-            if use_vlan_mode:
-                # Virtual network mode - let BACpypes3 connect to existing VLAN
-                app = Application.from_json(app_config, network_interface_name=network_interface_name)
-            else:
-                # IPv4 mode - configuration includes network port
-                app = Application.from_json(app_config)
+            app = Application.from_json(app_config)
 
             if app and device_name:
                 setattr(app, 'name', device_name)

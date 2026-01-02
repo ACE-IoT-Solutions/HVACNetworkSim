@@ -1,5 +1,4 @@
 import unittest
-import pytest
 from src.vav_box import VAVBox
 from src.ahu import AirHandlingUnit
 

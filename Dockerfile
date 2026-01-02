@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+#FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:python3.12-trixie
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -15,9 +16,10 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY examples/ ./examples/
+COPY data/ ./data/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir bacpypes3
+RUN uv sync
 
 # Expose BACnet port
 EXPOSE 47808/udp

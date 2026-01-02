@@ -1,7 +1,4 @@
 import unittest
-import pytest
-import math
-from datetime import datetime
 from src.boiler import Boiler
 
 class TestBoiler(unittest.TestCase):

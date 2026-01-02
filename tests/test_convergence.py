@@ -9,7 +9,7 @@ import sys
 import math
 import random
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 # Add the parent directory to the path to import the modules
 sys.path.append(str(Path(__file__).parent.parent))

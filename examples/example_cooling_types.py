@@ -4,13 +4,9 @@ Example simulation comparing chilled water and DX cooling AHUs.
 This simulates two identical building zones served by different AHU types.
 """
 
-import math
-import time
 from src.vav_box import VAVBox
 from src.ahu import AirHandlingUnit
 import matplotlib.pyplot as plt
-import numpy as np
-from datetime import datetime, timedelta
 
 def main():
     # Create identical VAV boxes for both systems
