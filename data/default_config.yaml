@@ -1,0 +1,114 @@
+# Default configuration for HVAC simulation
+# This file defines default values for all equipment and simulation parameters
+
+simulation:
+  time_step_minutes: 1
+  speed_multiplier: 60  # 1 simulated hour per real minute
+  start_hour: 6
+  occupied_hours:
+    - [8, 18]  # 8 AM to 6 PM
+  default_occupancy: 5
+
+bacnet:
+  # ip_address: null  # Auto-detect from container network
+  subnet_mask: "255.255.0.0"
+  gateway: "172.26.0.1"
+  port: 47808
+  device_id_base: 1000
+  vendor_id: 999
+  vendor_name: "ACEHVACNetwork"
+
+# Default parameters for each equipment type
+defaults:
+  vav:
+    min_airflow: 100  # CFM
+    max_airflow: 1000  # CFM
+    zone_temp_setpoint: 72  # °F
+    deadband: 2  # °F
+    discharge_air_temp_setpoint: 55  # °F
+    has_reheat: true
+    cooling_pid:
+      kp: 0.5
+      ki: 0.1
+      kd: 0.05
+      output_min: 0.0
+      output_max: 1.0
+    heating_pid:
+      kp: 0.5
+      ki: 0.1
+      kd: 0.05
+      output_min: 0.0
+      output_max: 1.0
+    thermal_zone:
+      zone_area: 400  # sq ft
+      zone_volume: 3200  # cu ft (8 ft ceiling)
+      window_area: 80  # sq ft
+      window_orientation: "east"
+      thermal_mass: 2.0
+
+  ahu:
+    supply_air_temp_setpoint: 55  # °F
+    min_supply_air_temp: 52  # °F
+    max_supply_air_temp: 65  # °F
+    max_supply_airflow: 10000  # CFM
+    cooling_type: "chilled_water"  # or "dx"
+    compressor_stages: 2
+    chilled_water_delta_t: 10  # °F
+    enable_supply_temp_reset: true
+    cooling_pid:
+      kp: 0.5
+      ki: 0.1
+      kd: 0.05
+    heating_pid:
+      kp: 0.5
+      ki: 0.1
+      kd: 0.05
+
+  chiller:
+    cooling_type: "water_cooled"  # or "air_cooled"
+    capacity: 500  # tons
+    design_cop: 5.0
+    design_entering_condenser_temp: 85  # °F
+    design_leaving_chilled_water_temp: 44  # °F
+    min_part_load_ratio: 0.1
+    design_chilled_water_flow: 1000  # GPM
+    design_condenser_water_flow: 1200  # GPM (for water-cooled)
+
+  cooling_tower:
+    capacity: 600  # tons
+    design_approach: 7  # °F
+    design_range: 10  # °F
+    design_wet_bulb: 78  # °F
+    design_water_flow: 1500  # GPM
+    min_water_temp: 65  # °F
+    max_fan_power: 50  # kW
+
+  boiler:
+    fuel_type: "natural_gas"  # or "propane", "electric"
+    capacity: 1000000  # BTU/hr
+    design_efficiency: 0.85
+    min_part_load_ratio: 0.2
+    design_leaving_water_temp: 180  # °F
+    design_entering_water_temp: 160  # °F
+    design_hot_water_flow: 100  # GPM
+    min_on_time: 5  # minutes
+    min_off_time: 5  # minutes
+
+# Example building configuration
+# Uncomment and modify for specific simulations
+# building:
+#   name: "Example Office Building"
+#   ahus:
+#     - name: "AHU-1"
+#       max_supply_airflow: 15000
+#       vav_boxes:
+#         - name: "VAV-1-1"
+#           zone_area: 500
+#         - name: "VAV-1-2"
+#           zone_area: 400
+#   chillers:
+#     - name: "Chiller-1"
+#       capacity: 300
+#   boilers:
+#     - name: "Boiler-1"
+#       capacity: 500000

@@ -58,23 +58,23 @@ class Boiler(BACPypesApplicationMixin):
         self.turndown_ratio = turndown_ratio
 
         # Current state
-        self.current_load = 0  # Current heating load in MBH
-        self.entering_water_temp = design_entering_water_temp  # Default EWT
-        self.leaving_water_temp = design_leaving_water_temp  # Default LWT
-        self.current_efficiency = 0  # Current efficiency (0 when off)
-        self.hot_water_flow = 0  # Current hot water flow rate in GPM
-        self.ambient_temp = 70  # Default ambient temperature in °F
-        self.is_on = False  # Boiler on/off status
+        self.current_load: float = 0.0  # Current heating load in MBH
+        self.entering_water_temp: float = design_entering_water_temp  # Default EWT
+        self.leaving_water_temp: float = design_leaving_water_temp  # Default LWT
+        self.current_efficiency: float = 0.0  # Current efficiency (0 when off)
+        self.hot_water_flow: float = 0.0  # Current hot water flow rate in GPM
+        self.ambient_temp: float = 70.0  # Default ambient temperature in °F
+        self.is_on: bool = False  # Boiler on/off status
 
         # Cycling parameters
-        self.min_on_time = 10  # Default minimum on time in minutes
-        self.min_off_time = 5  # Default minimum off time in minutes
-        self.cycles_per_hour_limit = 6  # Default maximum cycles per hour
-        self.cycles_in_current_hour = 0  # Cycle counter
-        self.time_in_current_state = 0  # Time in current on/off state
+        self.min_on_time: float = 10.0  # Default minimum on time in minutes
+        self.min_off_time: float = 5.0  # Default minimum off time in minutes
+        self.cycles_per_hour_limit: int = 6  # Default maximum cycles per hour
+        self.cycles_in_current_hour: int = 0  # Cycle counter
+        self.time_in_current_state: float = 0.0  # Time in current on/off state
 
         # Energy tracking
-        self.fuel_consumption = 0  # Units depend on fuel type
+        self.fuel_consumption: float = 0.0  # Units depend on fuel type
 
         # Validate parameters
         if fuel_type.lower() not in ["gas", "electric"]:

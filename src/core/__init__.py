@@ -1,5 +1,22 @@
 """Core utilities and constants for HVAC simulation."""
 
+from src.core.config import (
+    # Config dataclasses
+    PIDConfig,
+    ThermalZoneConfig,
+    VAVConfig,
+    AHUConfig,
+    ChillerConfig,
+    CoolingTowerConfig,
+    BoilerConfig,
+    BACnetConfig,
+    SimulationConfig,
+    BuildingConfig,
+    # Config utilities
+    load_config,
+    save_config,
+    get_default_config,
+)
 from src.core.constants import (
     # Air properties
     AIR_DENSITY,
@@ -26,6 +43,21 @@ from src.core.constants import (
 )
 
 __all__ = [
+    # Config dataclasses
+    "PIDConfig",
+    "ThermalZoneConfig",
+    "VAVConfig",
+    "AHUConfig",
+    "ChillerConfig",
+    "CoolingTowerConfig",
+    "BoilerConfig",
+    "BACnetConfig",
+    "SimulationConfig",
+    "BuildingConfig",
+    # Config utilities
+    "load_config",
+    "save_config",
+    "get_default_config",
     # Air properties
     "AIR_DENSITY",
     "AIR_SPECIFIC_HEAT",

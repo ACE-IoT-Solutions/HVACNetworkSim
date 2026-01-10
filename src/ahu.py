@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, List, Optional
 
 from src.vav_box import PIDController
 from src.base_equip import BACPypesApplicationMixin
@@ -20,17 +21,17 @@ class AirHandlingUnit(BACPypesApplicationMixin):
 
     def __init__(
         self,
-        name,
-        supply_air_temp_setpoint,
-        min_supply_air_temp,
-        max_supply_air_temp,
-        max_supply_airflow,
-        vav_boxes=None,
-        enable_supply_temp_reset=False,
-        cooling_type="chilled_water",
-        compressor_stages=2,
-        chilled_water_delta_t=10,
-    ):
+        name: str,
+        supply_air_temp_setpoint: float,
+        min_supply_air_temp: float,
+        max_supply_air_temp: float,
+        max_supply_airflow: float,
+        vav_boxes: Optional[List[Any]] = None,
+        enable_supply_temp_reset: bool = False,
+        cooling_type: str = "chilled_water",
+        compressor_stages: int = 2,
+        chilled_water_delta_t: float = 10.0,
+    ) -> None:
         """
         Initialize AHU with specified parameters.
 
@@ -55,36 +56,36 @@ class AirHandlingUnit(BACPypesApplicationMixin):
         self.enable_supply_temp_reset = enable_supply_temp_reset
 
         # Cooling system parameters
-        self.cooling_type = cooling_type.lower()
-        self.compressor_stages = compressor_stages
-        self.active_compressor_stages = 0
-        self.chilled_water_delta_t = chilled_water_delta_t
-        self.chilled_water_flow = 0  # GPM
+        self.cooling_type: str = cooling_type.lower()
+        self.compressor_stages: int = compressor_stages
+        self.active_compressor_stages: int = 0
+        self.chilled_water_delta_t: float = chilled_water_delta_t
+        self.chilled_water_flow: float = 0.0  # GPM
 
         # VAV boxes
-        self.vav_boxes = vav_boxes or []
+        self.vav_boxes: List[Any] = vav_boxes or []
 
         # Current state
-        self.current_supply_air_temp = supply_air_temp_setpoint
-        self.current_total_airflow = 0
-        self.cooling_valve_position = 0  # 0 to 1 (closed to open)
-        self.heating_valve_position = 0  # 0 to 1 (closed to open)
-        self.outdoor_temp = 70  # Default outdoor temperature in °F
+        self.current_supply_air_temp: float = supply_air_temp_setpoint
+        self.current_total_airflow: float = 0.0
+        self.cooling_valve_position: float = 0.0  # 0 to 1 (closed to open)
+        self.heating_valve_position: float = 0.0  # 0 to 1 (closed to open)
+        self.outdoor_temp: float = 70.0  # Default outdoor temperature in °F
 
         # Controllers
         self.cooling_pid = PIDController(kp=0.5, ki=0.1, kd=0.05, output_min=0.0, output_max=1.0)
         self.heating_pid = PIDController(kp=0.5, ki=0.1, kd=0.05, output_min=0.0, output_max=1.0)
 
         # Energy tracking
-        self.cooling_energy = 0
-        self.heating_energy = 0
-        self.fan_energy = 0
+        self.cooling_energy: float = 0.0
+        self.heating_energy: float = 0.0
+        self.fan_energy: float = 0.0
 
-    def add_vav_box(self, vav_box):
+    def add_vav_box(self, vav_box: Any) -> None:
         """Add a VAV box to the AHU."""
         self.vav_boxes.append(vav_box)
 
-    def update(self, zone_temps, outdoor_temp):
+    def update(self, zone_temps: Dict[str, float], outdoor_temp: float) -> None:
         """
         Update AHU and all connected VAV boxes.
 
@@ -112,7 +113,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
         # Calculate energy usage
         self._calculate_energy_usage()
 
-    def _calculate_supply_air_temp(self, zone_temps):
+    def _calculate_supply_air_temp(self, zone_temps: Dict[str, float]) -> float:
         """
         Calculate the appropriate supply air temperature.
 
@@ -159,11 +160,11 @@ class AirHandlingUnit(BACPypesApplicationMixin):
             # Balanced or all in deadband - use setpoint
             return self.supply_air_temp_setpoint
 
-    def _calculate_total_airflow(self):
+    def _calculate_total_airflow(self) -> None:
         """Calculate total airflow from all VAV boxes."""
         self.current_total_airflow = sum(vav.current_airflow for vav in self.vav_boxes)
 
-    def _control_valves(self):
+    def _control_valves(self) -> None:
         """Control cooling and heating valves based on load."""
         # Determine target mixed air temperature after coils
         required_temp = self.current_supply_air_temp
@@ -260,7 +261,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
         # Calculate fan energy (BTU/hr)
         self.fan_energy = self.calculate_fan_power() * BTU_PER_KWH  # kW to BTU/hr
 
-    def calculate_fan_power(self):
+    def calculate_fan_power(self) -> float:
         """
         Calculate fan power in kW based on current airflow.
 
@@ -278,7 +279,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
 
         return power
 
-    def calculate_energy_usage(self):
+    def calculate_energy_usage(self) -> Dict[str, float]:
         """Return current energy usage rates."""
         return {
             "cooling": self.cooling_energy,
@@ -287,7 +288,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
             "total": self.cooling_energy + self.heating_energy + self.fan_energy,
         }
 
-    def calculate_chilled_water_flow(self):
+    def calculate_chilled_water_flow(self) -> float:
         """
         Calculate chilled water flow rate in GPM based on cooling load.
 
@@ -311,7 +312,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
 
         return flow_rate
 
-    def get_process_variables(self):
+    def get_process_variables(self) -> Dict[str, Any]:
         """Return a dictionary of all process variables for the AHU."""
         energy = self.calculate_energy_usage()
         fan_power = self.calculate_fan_power()
@@ -359,7 +360,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
         return variables
 
     @classmethod
-    def get_process_variables_metadata(cls):
+    def get_process_variables_metadata(cls) -> Dict[str, Dict[str, Any]]:
         """Return metadata for all process variables."""
         metadata = {
             "name": {
@@ -500,7 +501,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
 
         return metadata
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of AHU state."""
         base_info = (
             f"AHU {self.name}: "

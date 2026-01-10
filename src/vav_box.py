@@ -21,11 +21,11 @@ class PIDController:
         self.kd = kd
         self.output_min = output_min
         self.output_max = output_max
-        self.setpoint = 0
-        self.previous_error = 0
-        self.previous_value = 0
-        self.integral = 0
-        self.last_output = 0
+        self.setpoint: float = 0.0
+        self.previous_error: float = 0.0
+        self.previous_value: float = 0.0
+        self.integral: float = 0.0
+        self.last_output: float = 0.0
         self.integral_windup_guard = 10.0  # Limit for integral term
         self.deadband = 0.5  # Small deadband to prevent micro-adjustments
 
@@ -269,21 +269,21 @@ class VAVBox(BACPypesApplicationMixin):
         self.thermal_mass = thermal_mass
 
         # Current state
-        self.current_airflow = min_airflow
-        self.damper_position = 0  # 0 to 1 (closed to open)
-        self.reheat_valve_position = 0  # 0 to 1 (closed to open)
-        self.zone_temp = zone_temp_setpoint
-        self.supply_air_temp = discharge_air_temp_setpoint
-        self.mode = "deadband"  # "cooling", "heating", or "deadband"
-        self.occupancy = 0  # Number of people in the zone
+        self.current_airflow: float = min_airflow
+        self.damper_position: float = 0.0  # 0 to 1 (closed to open)
+        self.reheat_valve_position: float = 0.0  # 0 to 1 (closed to open)
+        self.zone_temp: float = zone_temp_setpoint
+        self.supply_air_temp: float = discharge_air_temp_setpoint
+        self.mode: str = "deadband"  # "cooling", "heating", or "deadband"
+        self.occupancy: int = 0  # Number of people in the zone
 
         # Controllers
         self.cooling_pid = PIDController(kp=0.5, ki=0.1, kd=0.05, output_min=0.0, output_max=1.0)
         self.heating_pid = PIDController(kp=0.5, ki=0.1, kd=0.05, output_min=0.0, output_max=1.0)
 
         # Energy tracking
-        self.cooling_energy = 0
-        self.heating_energy = 0
+        self.cooling_energy: float = 0.0
+        self.heating_energy: float = 0.0
 
     def update(self, zone_temp, supply_air_temp):
         """Update VAV box state based on current conditions.

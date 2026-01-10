@@ -59,19 +59,21 @@ class Chiller(BACPypesApplicationMixin):
         self.design_condenser_water_flow = design_condenser_water_flow
 
         # Current state
-        self.current_load = 0  # Current cooling load in tons
-        self.entering_chilled_water_temp = design_leaving_chilled_water_temp + 10  # Default ECWT
-        self.leaving_chilled_water_temp = design_leaving_chilled_water_temp  # Default LCWT
-        self.entering_condenser_temp = design_entering_condenser_temp  # Default ECT
-        self.current_cop = 0  # Current COP (0 when off)
-        self.chilled_water_flow = 0  # Current chilled water flow rate in GPM
-        self.condenser_water_flow = 0  # Current condenser water flow rate in GPM
+        self.current_load: float = 0.0  # Current cooling load in tons
+        self.entering_chilled_water_temp: float = (
+            design_leaving_chilled_water_temp + 10.0
+        )  # Default ECWT
+        self.leaving_chilled_water_temp: float = design_leaving_chilled_water_temp  # Default LCWT
+        self.entering_condenser_temp: float = design_entering_condenser_temp  # Default ECT
+        self.current_cop: float = 0.0  # Current COP (0 when off)
+        self.chilled_water_flow: float = 0.0  # Current chilled water flow rate in GPM
+        self.condenser_water_flow: float = 0.0  # Current condenser water flow rate in GPM
 
         # Associated equipment
-        self.cooling_tower = None  # Reference to associated cooling tower
+        self.cooling_tower: Optional["CoolingTower"] = None  # Reference to associated cooling tower
 
         # Energy tracking
-        self.energy_consumption = 0  # kWh
+        self.energy_consumption: float = 0.0  # kWh
 
         # Validate parameters
         if cooling_type.lower() not in ["water_cooled", "air_cooled"]:

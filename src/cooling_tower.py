@@ -51,19 +51,19 @@ class CoolingTower(BACPypesApplicationMixin):
         self.num_cells = num_cells
 
         # Current state
-        self.current_load = 0  # Current heat rejection load in tons
-        self.entering_water_temp = 95  # Default entering water temperature in °F
-        self.leaving_water_temp = 85  # Default leaving water temperature in °F
-        self.current_wet_bulb = design_wet_bulb  # Current ambient wet bulb temperature in °F
-        self.fan_speed = 0  # Current fan speed in percent
-        self.water_flow = 0  # Current water flow in GPM
+        self.current_load: float = 0.0  # Current heat rejection load in tons
+        self.entering_water_temp: float = 95.0  # Default entering water temperature in °F
+        self.leaving_water_temp: float = 85.0  # Default leaving water temperature in °F
+        self.current_wet_bulb: float = design_wet_bulb  # Current ambient wet bulb temperature in °F
+        self.fan_speed: float = 0.0  # Current fan speed in percent
+        self.water_flow: float = 0.0  # Current water flow in GPM
 
         # Calculated parameters
-        self.design_flow = 3 * capacity  # Rule of thumb: 3 GPM/ton
-        self.current_approach = design_approach
+        self.design_flow: float = 3.0 * capacity  # Rule of thumb: 3 GPM/ton
+        self.current_approach: float = design_approach
 
         # Energy tracking
-        self.energy_consumption = 0  # kWh
+        self.energy_consumption: float = 0.0  # kWh
 
     @property
     def current_range(self) -> float:
