@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  hvac-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hvac-bacnet-simulator
+
+    # BACnet requires host networking or specific port mapping
+    # Option 1: Use host networking for BACnet discovery (recommended)
+    # network_mode: host
+
+    # Option 2: Use a custom network with static IP
+    networks:
+      bacnet-network:
+        ipv4_address: 172.28.0.10
+
+    ports:
+      - "47808:47808/udp"
+
+    environment:
+      # BACnet IP is auto-detected from container's network interface
+      # Override only if needed:
+      # BACNET_IP: "172.28.0.10"
+      BACNET_SUBNET: "16"
+      BACNET_PORT: "47808"
+
+      # Simulation mode: "simple" or "brick"
+      SIMULATION_MODE: "simple"
+
+      # For Brick mode, specify the TTL file path (inside container)
+      # BRICK_TTL_FILE: "/app/brick_schemas/bldg36.ttl"
+
+    volumes:
+      # Mount local TTL files to container
+      # The container will look for TTL files at /app/brick_schemas/
+      - ./data/brick_schemas:/app/brick_schemas:ro
+
+      # Optional: Mount configs directory for persistent BACnet configuration
+      # - ./configs:/app/configs
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.bind(('', 0)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Example: Brick-based simulation service
+  hvac-brick-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hvac-brick-simulator
+    profiles:
+      - brick  # Only starts when using: docker-compose --profile brick up
+
+    networks:
+      bacnet-network:
+        ipv4_address: 172.28.0.11
+
+    ports:
+      - "47809:47808/udp"
+
+    environment:
+      BACNET_SUBNET: "16"
+      BACNET_PORT: "47808"
+      SIMULATION_MODE: "brick"
+      BRICK_TTL_FILE: "/app/brick_schemas/bldg36.ttl"
+
+    volumes:
+      - ./data/brick_schemas:/app/brick_schemas:ro
+
+    restart: unless-stopped
+
+networks:
+  bacnet-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1

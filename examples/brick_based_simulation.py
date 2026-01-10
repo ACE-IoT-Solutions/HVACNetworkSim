@@ -131,8 +131,15 @@ class BrickParser:
     def extract_ahu_info(self):
         """Extract AHU information and their relationships."""
         ahu_info = {}
-        
-        for ahu in self.g.subjects(RDF.type, self.BRICK.Air_Handler_Unit):
+
+        # Look for both AHU and Air_Handler_Unit types (Brick schema variants)
+        ahu_types = [self.BRICK.AHU, self.BRICK.Air_Handler_Unit]
+        ahu_subjects = set()
+        for ahu_type in ahu_types:
+            for ahu in self.g.subjects(RDF.type, ahu_type):
+                ahu_subjects.add(ahu)
+
+        for ahu in ahu_subjects:
             ahu_id = str(ahu).split("#")[-1]
             
             # Initialize AHU entry

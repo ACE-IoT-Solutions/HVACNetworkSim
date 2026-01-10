@@ -67,18 +67,18 @@ output/
 .claude-flow/
 .claude/
 
-# Example files (not needed in container)
+# Example files (most not needed in container)
+# Note: brick_based_simulation.py is needed for Brick mode
 example_*.py
 complete_bacpypes3_simulation.py
 complete_bacpypes3_simulation_minute.py
-brick_based_simulation.py
 brick_based_simulation_refactored.py
 temperature_convergence_test.py
 test_bacpypes_simulation.py
 ip-to-vlan.py
 
-# Brick schemas (not needed in container)
-*.ttl
+# Note: Brick schemas (.ttl files) are now included in the container
+# They can also be mounted via volume at /app/brick_schemas
 
 # Test files
 tests/
