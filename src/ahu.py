@@ -1,7 +1,10 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from src.vav_box import PIDController
+
+if TYPE_CHECKING:
+    from src.core.config import AHUConfig
 from src.base_equip import BACPypesApplicationMixin
 from src.core.constants import (
     AIR_DENSITY,
@@ -18,6 +21,33 @@ class AirHandlingUnit(BACPypesApplicationMixin):
     Air Handling Unit (AHU) class that manages a collection of VAV boxes
     and controls supply air temperature. Supports chilled water or DX cooling.
     """
+
+    @classmethod
+    def from_config(cls, config: "AHUConfig") -> "AirHandlingUnit":
+        """Create an AirHandlingUnit from an AHUConfig dataclass.
+
+        Args:
+            config: AHUConfig dataclass with AHU parameters
+
+        Returns:
+            A new AirHandlingUnit instance
+        """
+        from src.core.config import AHUConfig  # Import here to avoid circular imports
+
+        if not isinstance(config, AHUConfig):
+            raise TypeError(f"Expected AHUConfig, got {type(config).__name__}")
+
+        return cls(
+            name=config.name,
+            supply_air_temp_setpoint=config.supply_air_temp_setpoint,
+            min_supply_air_temp=config.min_supply_air_temp,
+            max_supply_air_temp=config.max_supply_air_temp,
+            max_supply_airflow=config.max_supply_airflow,
+            enable_supply_temp_reset=config.enable_supply_temp_reset,
+            cooling_type=config.cooling_type,
+            compressor_stages=config.compressor_stages,
+            chilled_water_delta_t=config.chilled_water_delta_t,
+        )
 
     def __init__(
         self,

@@ -1,9 +1,13 @@
-import math
 import asyncio
 import logging
+import math
 import random
+from typing import TYPE_CHECKING
 
 from src.base_equip import BACPypesApplicationMixin
+
+if TYPE_CHECKING:
+    from src.core.config import VAVConfig
 from src.core.constants import (
     AIR_DENSITY,
     AIR_SPECIFIC_HEAT,
@@ -220,6 +224,43 @@ class PIDController:
 
 class VAVBox(BACPypesApplicationMixin):
     """Single zone VAV box model with reheat capability."""
+
+    @classmethod
+    def from_config(cls, config: "VAVConfig") -> "VAVBox":
+        """Create a VAVBox from a VAVConfig dataclass.
+
+        Args:
+            config: VAVConfig dataclass with VAV box parameters
+
+        Returns:
+            A new VAVBox instance
+        """
+        from src.core.config import VAVConfig  # Import here to avoid circular imports
+
+        if not isinstance(config, VAVConfig):
+            raise TypeError(f"Expected VAVConfig, got {type(config).__name__}")
+
+        # Build zone parameters from thermal_zone config if present
+        zone_kwargs = {}
+        if config.thermal_zone:
+            zone_kwargs = {
+                "zone_area": config.thermal_zone.zone_area,
+                "zone_volume": config.thermal_zone.zone_volume,
+                "window_area": config.thermal_zone.window_area,
+                "window_orientation": config.thermal_zone.window_orientation,
+                "thermal_mass": config.thermal_zone.thermal_mass,
+            }
+
+        return cls(
+            name=config.name,
+            min_airflow=config.min_airflow,
+            max_airflow=config.max_airflow,
+            zone_temp_setpoint=config.zone_temp_setpoint,
+            deadband=config.deadband,
+            discharge_air_temp_setpoint=config.discharge_air_temp_setpoint,
+            has_reheat=config.has_reheat,
+            **zone_kwargs,
+        )
 
     def __init__(
         self,

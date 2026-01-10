@@ -1,8 +1,11 @@
 import logging
 import math
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from .base_equip import BACPypesApplicationMixin
+
+if TYPE_CHECKING:
+    from src.core.config import CoolingTowerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +15,33 @@ class CoolingTower(BACPypesApplicationMixin):
     Cooling Tower class that models the performance of an evaporative cooling tower
     used to reject heat from water-cooled chillers.
     """
+
+    @classmethod
+    def from_config(cls, config: "CoolingTowerConfig") -> "CoolingTower":
+        """Create a CoolingTower from a CoolingTowerConfig dataclass.
+
+        Args:
+            config: CoolingTowerConfig dataclass with cooling tower parameters
+
+        Returns:
+            A new CoolingTower instance
+        """
+        from src.core.config import CoolingTowerConfig  # Import here to avoid circular imports
+
+        if not isinstance(config, CoolingTowerConfig):
+            raise TypeError(f"Expected CoolingTowerConfig, got {type(config).__name__}")
+
+        return cls(
+            name=config.name,
+            capacity=config.capacity,
+            design_approach=config.design_approach,
+            design_range=config.design_range,
+            design_wet_bulb=config.design_wet_bulb,
+            min_speed=config.min_speed,
+            tower_type=config.tower_type,
+            fan_power=config.max_fan_power,
+            num_cells=config.num_cells,
+        )
 
     def __init__(
         self,

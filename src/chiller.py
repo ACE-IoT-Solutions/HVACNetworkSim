@@ -1,15 +1,17 @@
 import logging
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .base_equip import BACPypesApplicationMixin
+
+if TYPE_CHECKING:
+    from src.core.config import ChillerConfig
+    from .cooling_tower import CoolingTower
+
 from src.core.constants import (
     BTU_PER_TON_HR,
     KW_PER_TON,
     WATER_HEAT_CONSTANT,
 )
-
-if TYPE_CHECKING:
-    from .cooling_tower import CoolingTower
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,33 @@ class Chiller(BACPypesApplicationMixin):
     """
     Chiller class that models the performance of water-cooled or air-cooled chillers.
     """
+
+    @classmethod
+    def from_config(cls, config: "ChillerConfig") -> "Chiller":
+        """Create a Chiller from a ChillerConfig dataclass.
+
+        Args:
+            config: ChillerConfig dataclass with chiller parameters
+
+        Returns:
+            A new Chiller instance
+        """
+        from src.core.config import ChillerConfig  # Import here to avoid circular imports
+
+        if not isinstance(config, ChillerConfig):
+            raise TypeError(f"Expected ChillerConfig, got {type(config).__name__}")
+
+        return cls(
+            name=config.name,
+            cooling_type=config.cooling_type,
+            capacity=config.capacity,
+            design_cop=config.design_cop,
+            design_entering_condenser_temp=config.design_entering_condenser_temp,
+            design_leaving_chilled_water_temp=config.design_leaving_chilled_water_temp,
+            min_part_load_ratio=config.min_part_load_ratio,
+            design_chilled_water_flow=config.design_chilled_water_flow,
+            design_condenser_water_flow=config.design_condenser_water_flow,
+        )
 
     def __init__(
         self,

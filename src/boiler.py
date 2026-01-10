@@ -1,7 +1,10 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .base_equip import BACPypesApplicationMixin
+
+if TYPE_CHECKING:
+    from src.core.config import BoilerConfig
 from src.core.constants import (
     WATER_HEAT_CONSTANT,
     BTU_PER_KWH,
@@ -16,6 +19,34 @@ class Boiler(BACPypesApplicationMixin):
     """
     Boiler class that models the performance of gas-fired or electric boilers.
     """
+
+    @classmethod
+    def from_config(cls, config: "BoilerConfig") -> "Boiler":
+        """Create a Boiler from a BoilerConfig dataclass.
+
+        Args:
+            config: BoilerConfig dataclass with boiler parameters
+
+        Returns:
+            A new Boiler instance
+        """
+        from src.core.config import BoilerConfig  # Import here to avoid circular imports
+
+        if not isinstance(config, BoilerConfig):
+            raise TypeError(f"Expected BoilerConfig, got {type(config).__name__}")
+
+        return cls(
+            name=config.name,
+            fuel_type=config.fuel_type,
+            capacity=config.capacity,
+            design_efficiency=config.design_efficiency,
+            design_entering_water_temp=config.design_entering_water_temp,
+            design_leaving_water_temp=config.design_leaving_water_temp,
+            min_part_load_ratio=config.min_part_load_ratio,
+            design_hot_water_flow=config.design_hot_water_flow,
+            condensing=config.condensing,
+            turndown_ratio=config.turndown_ratio,
+        )
 
     def __init__(
         self,

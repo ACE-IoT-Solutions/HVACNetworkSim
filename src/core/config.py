@@ -124,6 +124,9 @@ class CoolingTowerConfig:
     design_water_flow: float = 1500.0  # GPM
     min_water_temp: float = 65.0  # °F
     max_fan_power: float = 50.0  # kW
+    min_speed: float = 20.0  # percent
+    tower_type: str = "counterflow"  # or "crossflow"
+    num_cells: int = 1
 
 
 @dataclass
@@ -131,8 +134,8 @@ class BoilerConfig:
     """Configuration for a boiler."""
 
     name: str
-    fuel_type: str = "natural_gas"  # or "propane", "electric"
-    capacity: float = 1000000.0  # BTU/hr
+    fuel_type: str = "gas"  # or "electric" (gas includes natural_gas and propane)
+    capacity: float = 1000.0  # MBH (thousand BTU/hr)
     design_efficiency: float = 0.85
     min_part_load_ratio: float = 0.2
     design_leaving_water_temp: float = 180.0  # °F
@@ -140,6 +143,8 @@ class BoilerConfig:
     design_hot_water_flow: float = 100.0  # GPM
     min_on_time: float = 5.0  # minutes
     min_off_time: float = 5.0  # minutes
+    condensing: bool = False  # Condensing type (for gas boilers)
+    turndown_ratio: float = 4.0  # Turndown ratio
 
 
 @dataclass
