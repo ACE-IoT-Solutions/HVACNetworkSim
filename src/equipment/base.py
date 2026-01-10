@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 class EquipmentType(Enum):
     """Enumeration of equipment types for categorization."""
+
     VAV_BOX = auto()
     AIR_HANDLING_UNIT = auto()
     CHILLER = auto()

@@ -128,10 +128,7 @@ def calculate_chilled_water_flow(load_btu: float, delta_t: float) -> float:
 
 
 def calculate_fan_power(
-    current_flow: float,
-    max_flow: float,
-    design_power_kw: float,
-    min_power_fraction: float = 0.3
+    current_flow: float, max_flow: float, design_power_kw: float, min_power_fraction: float = 0.3
 ) -> float:
     """
     Calculate fan power using fan affinity laws.
@@ -160,7 +157,7 @@ def calculate_fan_power(
 
     flow_ratio = min(current_flow / max_flow, 1.0)
     # Fan affinity: Power = (Flow ratio)^3
-    power_ratio = flow_ratio ** 3
+    power_ratio = flow_ratio**3
     # Apply minimum power floor
     power_ratio = max(power_ratio, min_power_fraction * flow_ratio if flow_ratio > 0 else 0)
 

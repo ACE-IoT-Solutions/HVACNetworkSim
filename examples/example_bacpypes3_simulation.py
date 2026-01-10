@@ -49,7 +49,7 @@ async def create_controller(network_name, mac_address="0x01"):
             "protocol-version": 1,
             "protocol-revision": 22,
             "application-software-version": "1.0",
-            "description": "Central BACnet Controller"
+            "description": "Central BACnet Controller",
         },
         {
             "bacnet-ip-mode": "normal",
@@ -67,7 +67,7 @@ async def create_controller(network_name, mac_address="0x01"):
             "object-type": "network-port",
             "out-of-service": False,
             "protocol-level": "bacnet-application",
-            "reliability": "no-fault-detected"
+            "reliability": "no-fault-detected",
         },
         # Network Port
         {
@@ -82,62 +82,65 @@ async def create_controller(network_name, mac_address="0x01"):
             "object-type": "network-port",
             "out-of-service": False,
             "protocol-level": "bacnet-application",
-            "reliability": "no-fault-detected"
-        }
+            "reliability": "no-fault-detected",
+        },
     ]
-    
+
     # Create the controller using from_json method (which is synchronous)
     controller = Application.from_json(controller_config)
-    
+
     print(f"Created controller device (ID: 1000) on network: {network_name}")
-    
+
     return controller
+
 
 async def discover_devices(controller_app):
     """Discover devices on the network using Who-Is service."""
     print("\nDiscovering devices on the network...")
-    
+
     # Use Who-Is to discover devices
     i_ams = await controller_app.who_is()
-    
+
     for i_am in i_ams:
         print(f"Found device: {i_am.iAmDeviceIdentifier[1]} at {i_am.pduSource}")
-    
+
     return i_ams
 
-async def read_vav_properties(controller_app, device_address, object_id, property_id="present-value"):
+
+async def read_vav_properties(
+    controller_app, device_address, object_id, property_id="present-value"
+):
     """Read a property from a VAV device."""
     try:
         result = await controller_app.read_property(
-            address=device_address,
-            objid=object_id,
-            prop=property_id
+            address=device_address, objid=object_id, prop=property_id
         )
         return result
     except Exception as e:
         print(f"Error reading property: {e}")
         return None
 
+
 async def read_vav_state(controller_app, i_am):
     """Read the state of a VAV device."""
     device_id = i_am.iAmDeviceIdentifier[1]
     device_address = i_am.pduSource
-    
+
     # Key properties to read
     properties = [
         ("analog-value,1", "zone_temp"),
-        ("analog-value,2", "damper_position"), 
+        ("analog-value,2", "damper_position"),
         ("analog-value,3", "reheat_valve_position"),
-        ("multi-state-value,4", "mode")
+        ("multi-state-value,4", "mode"),
     ]
-    
+
     print(f"\nReading state of device {device_id}:")
-    
+
     state = {}
     for obj_id, name in properties:
         try:
             value = await read_vav_properties(controller_app, device_address, obj_id)
-            
+
             # For multi-state values, try to read state-text and convert numeric value to text
             if obj_id.startswith("multi-state"):
                 try:
@@ -148,17 +151,18 @@ async def read_vav_state(controller_app, i_am):
                         value = f"{value} ({state_text[value-1]})"
                 except Exception:
                     pass
-                    
+
             state[name] = value
             print(f"  {name}: {value}")
         except:
             print(f"Error reading property: {device_address} - {obj_id} - {name}")
-    
+
     return state
+
 
 async def simulate_vav_box(vav, app, hours_per_minute=60):
     """Maintain an ongoing simulation of a VAV box, updating when requested.
-    
+
     Args:
         vav: VAVBox instance to simulate
         app: BACpypes3 Application object
@@ -167,108 +171,114 @@ async def simulate_vav_box(vav, app, hours_per_minute=60):
     # Define a 24-hour period of outdoor temperatures with a sine wave pattern
     # Coldest at 5 AM, warmest at 5 PM
     outdoor_temps = {hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12) for hour in range(24)}
-    
+
     # Office occupied from 8 AM to 6 PM
     occupied_hours = [(8, 18)]
     occupancy = 5  # 5 people during occupied hours
-    
+
     # Simulation start time - 6 AM
     start_hour = 6
     current_hour = start_hour
     current_minute = 0
     previous_time = (current_hour, current_minute)
-    
+
     # Constant AHU supply air temperature
     supply_air_temp = 55  # °F
-    
+
     # Calculate sleep time for simulation speed
     sleep_time = 60 / hours_per_minute  # seconds per simulated hour
-    
+
     print(f"\nStarting simulation for VAV box {vav.name}...")
     print(f"Speed: {hours_per_minute}x (1 hour per {sleep_time:.1f} seconds)")
-    
+
     try:
         while not exit_event.is_set():
             # Get current simulation hour (wrapped to 0-23)
             hour = current_hour % 24
             minute = current_minute
-            
+
             # Get temperature for current hour
             outdoor_temp = outdoor_temps[hour]
-            
+
             # Add some random variation to make it more realistic
             outdoor_temp += random.uniform(-1, 1)  # ±1°F variation
-            
+
             # Check if occupied based on time of day
             is_occupied = any(start <= hour < end for start, end in occupied_hours)
             occupancy_count = occupancy if is_occupied else 0
-            
+
             # Set occupancy
             vav.set_occupancy(occupancy_count)
-            
+
             # Only reset if temperature is truly unrealistic
             if vav.zone_temp < 20 or vav.zone_temp > 120:
                 print(f"Resetting unrealistic temperature: {vav.zone_temp:.1f}°F to setpoint")
                 vav.zone_temp = vav.zone_temp_setpoint
-                
+
             # Update VAV box with current conditions
             vav.update(vav.zone_temp, supply_air_temp)
-            
+
             # Simulate thermal behavior for the time elapsed since last update
             vav_effect = 0
             if vav.mode == "cooling":
-                vav_effect = vav.current_airflow / vav.max_airflow  # Positive effect for cooling in our thermal model
+                vav_effect = (
+                    vav.current_airflow / vav.max_airflow
+                )  # Positive effect for cooling in our thermal model
             elif vav.mode == "heating" and vav.has_reheat:
-                vav_effect = -vav.reheat_valve_position  # Negative effect for heating in our thermal model
-                
+                vav_effect = (
+                    -vav.reheat_valve_position
+                )  # Negative effect for heating in our thermal model
+
             # Calculate minutes elapsed since last update
             prev_hour, prev_minute = previous_time
             minutes_elapsed = ((hour - prev_hour) % 24) * 60 + (minute - prev_minute)
             if minutes_elapsed <= 0:
                 minutes_elapsed = 1  # Ensure at least 1 minute of simulation
-                
+
             # Cap the maximum simulation step to avoid large temperature jumps
             minutes_elapsed = min(minutes_elapsed, 60)
-                
+
             temp_change = vav.calculate_thermal_behavior(
                 minutes=minutes_elapsed,
                 outdoor_temp=outdoor_temp,
                 vav_cooling_effect=vav_effect,
-                time_of_day=(hour, minute)
+                time_of_day=(hour, minute),
             )
-            
+
             # Our thermal model now handles rate-of-change limits internally
             # This is now redundant, but we'll keep a more generous limit as a safety check
             max_allowed_change = 5.0  # Maximum 5°F change per step to prevent simulation errors
             temp_change = max(min(temp_change, max_allowed_change), -max_allowed_change)
-            
+
             # Update zone temperature with calculated change (scaled by elapsed time)
             vav.zone_temp += temp_change
-            
+
             # Our thermal model now naturally prevents extreme temperatures
             # No artificial clamping needed
-            
+
             # Save current time for next update
             previous_time = (hour, minute)
-            
+
             # Update the BACnet device
             await vav.update_bacpypes3_device(app)
-            
+
             # Display current simulation time and key values
             time_str = f"{hour:02d}:{minute:02d}"
-            print(f"{vav.name} - Time: {time_str}, Outdoor: {outdoor_temp:.1f}°F, " + 
-                  f"Zone: {vav.zone_temp:.1f}°F, Mode: {vav.mode}, " +
-                  f"Airflow: {vav.current_airflow:.0f} CFM")
-            
+            print(
+                f"{vav.name} - Time: {time_str}, Outdoor: {outdoor_temp:.1f}°F, "
+                + f"Zone: {vav.zone_temp:.1f}°F, Mode: {vav.mode}, "
+                + f"Airflow: {vav.current_airflow:.0f} CFM"
+            )
+
             # Increment time by a small amount for the next simulation step
             current_minute += 15  # 15-minute increments
             if current_minute >= 60:
                 current_hour += 1
                 current_minute = 0
-            
+
             # Sleep for the appropriate time to maintain simulation speed
             await asyncio.sleep(sleep_time / 4)  # Quarter of an hour in sim time
-            
+
     except asyncio.CancelledError:
         print(f"\nSimulation for {vav.name} cancelled.")
     except Exception as e:
@@ -276,43 +286,44 @@ async def simulate_vav_box(vav, app, hours_per_minute=60):
     finally:
         print(f"Simulation for {vav.name} stopped at {hour:02d}:{minute:02d}.")
 
+
 async def controller_monitoring(controller_app, monitoring_interval=5):
     """Periodically monitor VAV devices from the controller."""
     try:
         discovered_devices = []
-        
+
         # Initial discovery
         print("\nInitial device discovery...")
         i_ams = await discover_devices(controller_app)
         discovered_devices = i_ams
-        
+
         # Initial state reading
         if i_ams:
             print("\nReading initial state of all devices:")
             for i_am in i_ams:
                 await read_vav_state(controller_app, i_am)
-        
+
         # Periodic monitoring
         while not exit_event.is_set():
             try:
                 # Every interval, read the latest state from each device
                 print("\n--- Controller Monitoring Update ---")
-                
+
                 # Re-discover devices occasionally to catch any changes
                 if random.random() < 0.2:  # 20% chance to rediscover
                     i_ams = await discover_devices(controller_app)
                     discovered_devices = i_ams
-                
+
                 # Read state from each known device
                 for i_am in discovered_devices:
                     await read_vav_state(controller_app, i_am)
-                    
+
             except Exception as e:
                 print(f"Controller monitoring error: {e}")
-                
+
             # Wait before next monitoring cycle
             await asyncio.sleep(monitoring_interval)
-            
+
     except asyncio.CancelledError:
         print("\nController monitoring cancelled.")
     except Exception as e:
@@ -320,17 +331,18 @@ async def controller_monitoring(controller_app, monitoring_interval=5):
     finally:
         print("Controller monitoring stopped.")
 
+
 async def main():
     global all_devices, virtual_network, controller_app, exit_event
-    
+
     # Create an exit event for clean shutdown
     exit_event = asyncio.Event()
-    
+
     # Set up signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
-    
+
     try:
         # Create a virtual network
         network_name = "hvac-network"
@@ -342,7 +354,7 @@ async def main():
         all_devices.append(controller_app)  # Keep reference for cleanup
         await asyncio.sleep(1.0)
         print("\nCreated VAV boxes and controller on the BACnet network")
-        
+
         # Create VAV boxes
         vav_configs = [
             {
@@ -359,7 +371,7 @@ async def main():
                 "window_orientation": "east",
                 "thermal_mass": 2.0,
                 "device_id": 1001,
-                "mac_address": "0x0A"
+                "mac_address": "0x0A",
             },
             {
                 "name": "Office-2",
@@ -375,7 +387,7 @@ async def main():
                 "window_orientation": "south",
                 "thermal_mass": 1.8,
                 "device_id": 1002,
-                "mac_address": "0x0B"
+                "mac_address": "0x0B",
             },
             {
                 "name": "Conference",
@@ -391,71 +403,68 @@ async def main():
                 "window_orientation": "west",
                 "thermal_mass": 1.5,
                 "device_id": 1003,
-                "mac_address": "0x0C"
-            }
+                "mac_address": "0x0C",
+            },
         ]
-        
+
         # Create VAV boxes and applications
         vav_devices = []
         for config in vav_configs:
             device_id = config.pop("device_id")
-            mac_address = config.pop("mac_address") 
-            
+            mac_address = config.pop("mac_address")
+
             # Create the VAV box
             vav = VAVBox(**config)
-            
+
             # Create BACpypes device
             app = vav.create_bacpypes3_device(
                 device_id=device_id,
                 device_name=f"VAV-{vav.name}",
                 network_interface_name=network_name,
-                mac_address=mac_address
+                mac_address=mac_address,
             )
-            await asyncio.sleep(0.1) 
+            await asyncio.sleep(0.1)
             # Store for simulation
             vav_devices.append((vav, app))
             all_devices.append(app)  # Keep reference for cleanup
-        
-        
+
         # Discover devices on the network
         # await discover_devices(controller_app)
-        
+
         # Start simulations for each VAV box
         simulation_tasks = []
         for vav, app in vav_devices:
             simulation_tasks.append(
-                asyncio.create_task(
-                    simulate_vav_box(vav, app, hours_per_minute=60)
-                )
+                asyncio.create_task(simulate_vav_box(vav, app, hours_per_minute=60))
             )
-        
+
         # Start controller monitoring
         monitoring_task = asyncio.create_task(
             controller_monitoring(controller_app, monitoring_interval=10)
         )
-        
+
         # Wait for all tasks to complete
-        await asyncio.gather(*simulation_tasks,
-                             monitoring_task
-                             )
-        
+        await asyncio.gather(*simulation_tasks, monitoring_task)
+
     except Exception as e:
         import traceback
+
         print(f"Error in main: {e}")
         traceback.print_exc()
     finally:
         # Clean shutdown
         await shutdown()
 
+
 async def shutdown():
     """Clean shutdown of the application."""
     global exit_event, all_devices
-    
+
     # Signal all tasks to exit
     if exit_event and not exit_event.is_set():
         print("\nShutting down...")
         exit_event.set()
-    
+
     # Close all devices - BACpypes3 Application objects don't need explicit closing
     if all_devices:
         for app in all_devices:
@@ -463,13 +472,16 @@ async def shutdown():
                 # Find the device object
                 for obj in app.objectIdentifier.values():
                     if hasattr(obj, "objectIdentifier") and obj.objectIdentifier[0] == "device":
-                        print(f"Cleaning up BACnet device: {obj.objectName} (ID: {obj.objectIdentifier[1]})")
+                        print(
+                            f"Cleaning up BACnet device: {obj.objectName} (ID: {obj.objectIdentifier[1]})"
+                        )
                         break
                 # Nothing else to do - BACpypes3 handles cleanup automatically
             except Exception as e:
                 print(f"Error during device cleanup: {e}")
-    
+
     print("Shutdown complete.")
+
 
 if __name__ == "__main__":
     try:

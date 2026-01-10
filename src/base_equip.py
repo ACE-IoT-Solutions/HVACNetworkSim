@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import Any, Dict, Optional
 
 from bacpypes3.app import Application
 from bacpypes3.object import (
@@ -18,10 +17,10 @@ def hex_to_padded_octets(hex_string):
     hex_string = hex_string.replace("0x", "")  # Remove any "0x" prefixes
     if len(hex_string) % 2 != 0:
         hex_string = "0" + hex_string  # Pad with a leading zero if necessary
-    return "0x" + "".join([hex_string[i:i+2] for i in range(0, len(hex_string), 2)])
+    return "0x" + "".join([hex_string[i : i + 2] for i in range(0, len(hex_string), 2)])
 
 
-class BACPypesApplicationMixin():
+class BACPypesApplicationMixin:
     async def update_bacnet_device(self):
         """
         Update a BACnet device with current device state.
@@ -91,7 +90,11 @@ class BACPypesApplicationMixin():
                             continue
 
                         # For string properties represented as analog values
-                        elif obj_type == "analog-value" and obj.description and "string length" in obj.description:
+                        elif (
+                            obj_type == "analog-value"
+                            and obj.description
+                            and "string length" in obj.description
+                        ):
                             str_len = float(len(str(value)))
                             if obj.presentValue != str_len:
                                 obj.presentValue = str_len
@@ -106,21 +109,15 @@ class BACPypesApplicationMixin():
                             obj.presentValue = value
                             update_count += 1
                     except Exception as e:
-                        logger.debug(
-                            "Could not directly assign value to %s: %s",
-                            point_name, e
-                        )
+                        logger.debug("Could not directly assign value to %s: %s", point_name, e)
                 except Exception as e:
                     logger.warning(
-                        "Error updating point %s: %s",
-                        getattr(obj, 'objectName', 'unknown'), e
+                        "Error updating point %s: %s", getattr(obj, "objectName", "unknown"), e
                     )
 
             # Only log if we actually updated something, to reduce console spam
             if update_count > 0:
-                logger.debug(
-                    "Updated %d BACnet points for %s", update_count, self.name
-                )
+                logger.debug("Updated %d BACnet points for %s", update_count, self.name)
 
         except Exception as e:
             logger.error("Error updating BACnet device %s: %s", self.name, e)
@@ -128,9 +125,14 @@ class BACPypesApplicationMixin():
         # Add a small delay to avoid overwhelming the BACnet stack
         await asyncio.sleep(0.05)
 
-    def create_bacpypes3_device(self, device_id=None, device_name=None,
-                                ip_address=None,
-                                network_interface_name=None, mac_address=None):
+    def create_bacpypes3_device(
+        self,
+        device_id=None,
+        device_name=None,
+        ip_address=None,
+        network_interface_name=None,
+        mac_address=None,
+    ):
         """
         Create a BACpypes3 device representation of this VAV box.
 
@@ -161,22 +163,17 @@ class BACPypesApplicationMixin():
         use_vlan_mode = network_interface_name is not None
 
         if use_ip_mode:
-            logger.info(
-                "Creating %s with ID %d on IP %s", device_name, device_id, ip_address
-            )
+            logger.info("Creating %s with ID %d on IP %s", device_name, device_id, ip_address)
         elif use_vlan_mode:
             logger.info(
-                "Creating %s with ID %d on VLAN %s",
-                device_name, device_id, network_interface_name
+                "Creating %s with ID %d on VLAN %s", device_name, device_id, network_interface_name
             )
         else:
             # Default to VLAN mode for backwards compatibility with tests
             network_interface_name = "vlan"
             mac_address = "0x01" if mac_address is None else mac_address
             use_vlan_mode = True
-            logger.info(
-                "Creating %s with ID %d on default VLAN", device_name, device_id
-            )
+            logger.info("Creating %s with ID %d on default VLAN", device_name, device_id)
 
         # Create JSON-compatible configuration list for the application
         app_config = [
@@ -199,52 +196,56 @@ class BACPypesApplicationMixin():
                 "system-status": "operational",
                 "vendor-identifier": 999,
                 "vendor-name": "ACEHVACNetwork",
-                "description": f"Simulated VAV Box - {self.name}"
+                "description": f"Simulated VAV Box - {self.name}",
             }
         ]
 
         # Add network port configuration based on mode
         if use_ip_mode:
             # IPv4 BACnet/IP mode for real network communication
-            app_config.append({
-                "changes-pending": False,
-                "ip-address": ip_address.split('/')[0],  # Extract IP without CIDR
-                "ip-subnet-mask": "255.255.0.0",  # For /16 subnet
-                "ip-default-gateway": "172.26.0.1",
-                "bacnet-ip-mode": "normal",  # Normal BACnet/IP mode
-                "bacnet-ip-udp-port": 47808,
-                "network-type": "ipv4",
-                "object-identifier": "network-port,1",
-                "object-name": "BACnet-IP-Port",
-                "object-type": "network-port",
-                "out-of-service": False,
-                "protocol-level": "bacnet-application",
-                "reliability": "no-fault-detected"
-            })
+            app_config.append(
+                {
+                    "changes-pending": False,
+                    "ip-address": ip_address.split("/")[0],  # Extract IP without CIDR
+                    "ip-subnet-mask": "255.255.0.0",  # For /16 subnet
+                    "ip-default-gateway": "172.26.0.1",
+                    "bacnet-ip-mode": "normal",  # Normal BACnet/IP mode
+                    "bacnet-ip-udp-port": 47808,
+                    "network-type": "ipv4",
+                    "object-identifier": "network-port,1",
+                    "object-name": "BACnet-IP-Port",
+                    "object-type": "network-port",
+                    "out-of-service": False,
+                    "protocol-level": "bacnet-application",
+                    "reliability": "no-fault-detected",
+                }
+            )
         elif use_vlan_mode:
             # Virtual network mode - let BACpypes3 connect to existing VLAN
             # Ensure MAC address is properly formatted (even length hex)
             formatted_mac = mac_address if mac_address else "0x01"
             formatted_mac = hex_to_padded_octets(formatted_mac)
 
-            app_config.append({
-                "object-identifier": "network-port,1",
-                "object-name": "VirtualPort",
-                "object-type": "network-port",
-                "network-type": "virtual",
-                "network-interface-name": network_interface_name,
-                "mac-address": formatted_mac,
-                "out-of-service": False,
-                "protocol-level": "bacnet-application",
-                "reliability": "no-fault-detected"
-            })
+            app_config.append(
+                {
+                    "object-identifier": "network-port,1",
+                    "object-name": "VirtualPort",
+                    "object-type": "network-port",
+                    "network-type": "virtual",
+                    "network-interface-name": network_interface_name,
+                    "mac-address": formatted_mac,
+                    "out-of-service": False,
+                    "protocol-level": "bacnet-application",
+                    "reliability": "no-fault-detected",
+                }
+            )
 
         try:
             # Create the application using from_json method
             app = Application.from_json(app_config)
 
             if app and device_name:
-                setattr(app, 'name', device_name)
+                setattr(app, "name", device_name)
         except Exception as e:
             logger.exception("Error creating BACnet device %s: %s", device_name, e)
             return None
@@ -290,36 +291,38 @@ class BACPypesApplicationMixin():
 
                 # Create analog value object
 
-                point_obj = AnalogValueObject(objectIdentifier=f"analog-value,{point_id}",
-                                              objectName=point_name,
-                                              description=point_meta["label"],
-                                              presentValue=float(value),
-                                              units=units
-                                              )
+                point_obj = AnalogValueObject(
+                    objectIdentifier=f"analog-value,{point_id}",
+                    objectName=point_name,
+                    description=point_meta["label"],
+                    presentValue=float(value),
+                    units=units,
+                )
 
-            elif point_meta["type"] == bool:
+            elif point_meta["type"] is bool:
                 # Create binary value object
-                point_obj = BinaryValueObject(objectIdentifier=f"binary-value,{point_id}",
-                                              objectName=point_name,
-                                              description=point_meta["label"],
-                                              presentValue=bool(value)
-                                              )
-            elif point_meta["type"] == str and "options" in point_meta:
-                point_obj = MultiStateValueObject(objectIdentifier=f"multi-state-value,{point_id}",
-                                                  objectName=point_name,
-                                                  description=point_meta["label"],
-                                                  presentValue=point_meta["options"].index(
-                                                      value) + 1,
-                                                  numberOfStates=len(
-                                                      point_meta["options"]),
-                                                  stateText=point_meta["options"]
-                                                  )
+                point_obj = BinaryValueObject(
+                    objectIdentifier=f"binary-value,{point_id}",
+                    objectName=point_name,
+                    description=point_meta["label"],
+                    presentValue=bool(value),
+                )
+            elif point_meta["type"] is str and "options" in point_meta:
+                point_obj = MultiStateValueObject(
+                    objectIdentifier=f"multi-state-value,{point_id}",
+                    objectName=point_name,
+                    description=point_meta["label"],
+                    presentValue=point_meta["options"].index(value) + 1,
+                    numberOfStates=len(point_meta["options"]),
+                    stateText=point_meta["options"],
+                )
             else:
-                point_obj = CharacterStringValueObject(objectIdentifier=f"character-string-value,{point_id}",
-                                                       objectName=point_name,
-                                                       description=point_meta["label"],
-                                                       presentValue=str(value)
-                                                       )
+                point_obj = CharacterStringValueObject(
+                    objectIdentifier=f"character-string-value,{point_id}",
+                    objectName=point_name,
+                    description=point_meta["label"],
+                    presentValue=str(value),
+                )
             app.add_object(point_obj)
             point_id += 1
 

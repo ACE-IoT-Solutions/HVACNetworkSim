@@ -16,6 +16,7 @@ viz = [
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.5.1",
     "pyrefly>=0.15.2",
     "pytest>=8.3.5",
     "ruff>=0.11.10",

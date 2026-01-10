@@ -1,0 +1,31 @@
+# Pre-commit hooks for HVACNetwork
+# See https://pre-commit.com for more information
+# Run `pre-commit install` to set up the hooks
+
+repos:
+  # Ruff - Fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+        exclude: ^examples/
+      - id: ruff-format
+        types_or: [python, pyi]
+        exclude: ^examples/
+
+  # Local hooks for pyrefly (not available as a pre-commit repo)
+  # Note: pyrefly currently reports many false positives on type coercion
+  # This hook is informational only (won't block commits)
+  # Consider making this stricter as code is properly typed
+  - repo: local
+    hooks:
+      - id: pyrefly
+        name: pyrefly type check (informational)
+        entry: bash -c 'uv run pyrefly check src/ || true'
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+        verbose: true

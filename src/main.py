@@ -20,29 +20,28 @@ Environment Variables:
     SIMULATION_MODE: "simple" or "brick" (default: simple)
     BRICK_TTL_FILE: Path to Brick TTL file (required for brick mode)
 """
+
 import asyncio
 import logging
 import math
 import os
 import random
 import sys
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Import simulation components
-from src.vav_box import VAVBox
-from src.ahu import AirHandlingUnit
-from src.boiler import Boiler
-from src.chiller import Chiller
-from src.bacnet_network import (
-    BACnetNetworkManager,
+# Import simulation components (must be after logging config)
+from src.vav_box import VAVBox  # noqa: E402
+from src.ahu import AirHandlingUnit  # noqa: E402
+from src.boiler import Boiler  # noqa: E402
+from src.chiller import Chiller  # noqa: E402
+from src.bacnet_network import (  # noqa: E402
     create_building_networks_from_brick,
-    get_vav_network_assignment
+    get_vav_network_assignment,
 )
 
 
@@ -80,7 +79,7 @@ async def run_simple_simulation():
         zone_volume=3200,  # cubic ft (8ft ceiling)
         window_area=80,  # sq ft
         window_orientation="east",
-        thermal_mass=2.0
+        thermal_mass=2.0,
     )
 
     # Create BACnet device using auto-detected/configured IP
@@ -106,10 +105,7 @@ async def run_simple_simulation():
                 break
 
     # 24-hour outdoor temperature pattern
-    outdoor_temps = {
-        hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12)
-        for hour in range(24)
-    }
+    outdoor_temps = {hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12) for hour in range(24)}
 
     # Office hours
     occupied_hours = [(8, 18)]
@@ -140,7 +136,7 @@ async def run_simple_simulation():
                 minutes=60,
                 outdoor_temp=outdoor_temp,
                 vav_cooling_effect=vav_effect,
-                time_of_day=(hour, 0)
+                time_of_day=(hour, 0),
             )
 
             vav.zone_temp += temp_change
@@ -179,11 +175,13 @@ async def run_brick_simulation():
         logger.error(f"Brick TTL file not found: {ttl_file}")
         sys.exit(1)
 
-    logger.info(f"Starting Brick-based simulation with routed networks")
+    logger.info("Starting Brick-based simulation with routed networks")
     logger.info(f"  TTL file: {ttl_file}")
 
     try:
-        from rdflib import Graph
+        import rdflib  # noqa: F401 - availability check
+
+        del rdflib
     except ImportError:
         logger.error("rdflib is required for Brick-based simulation")
         logger.error("Install with: pip install rdflib")
@@ -202,7 +200,7 @@ async def run_brick_simulation():
     parser = BrickParser(ttl_file)
     building_structure = parser.extract_all_equipment()
 
-    building_name = building_structure.get('building', {}).get('name', 'Unknown')
+    building_name = building_structure.get("building", {}).get("name", "Unknown")
     ahus = building_structure.get("ahus", {})
     vavs = building_structure.get("vavs", {})
 
@@ -255,14 +253,12 @@ async def run_brick_simulation():
             zone_volume=3200,
             window_area=80,
             window_orientation="east",
-            thermal_mass=2.0
+            thermal_mass=2.0,
         )
 
         # Add to the AHU's network
         app = network_manager.add_device_to_network(
-            equipment=vav,
-            network_info=network_info,
-            device_name=f"VAV-{vav_name}"
+            equipment=vav, network_info=network_info, device_name=f"VAV-{vav_name}"
         )
 
         if app:
@@ -297,14 +293,12 @@ async def run_brick_simulation():
             max_supply_air_temp=65,
             max_supply_airflow=total_airflow * 1.2,  # 20% safety factor
             vav_boxes=vav_list,
-            enable_supply_temp_reset=True
+            enable_supply_temp_reset=True,
         )
 
         # Add to the network
         app = network_manager.add_device_to_network(
-            equipment=ahu,
-            network_info=network_info,
-            device_name=f"AHU-{ahu_name}"
+            equipment=ahu, network_info=network_info, device_name=f"AHU-{ahu_name}"
         )
 
         if app:
@@ -322,12 +316,12 @@ async def run_brick_simulation():
                 boiler = Boiler(
                     name=boiler_name if isinstance(boiler_name, str) else "Boiler-1",
                     capacity=1000000,  # BTU/hr
-                    efficiency=0.85
+                    efficiency=0.85,
                 )
                 network_manager.add_device_to_network(
                     equipment=boiler,
                     network_info=central_plant_network,
-                    device_name=f"Boiler-{boiler_name}"
+                    device_name=f"Boiler-{boiler_name}",
                 )
 
         # Add chillers
@@ -336,12 +330,12 @@ async def run_brick_simulation():
             chiller = Chiller(
                 name=chiller_name if isinstance(chiller_name, str) else "Chiller-1",
                 capacity=500,  # tons
-                efficiency=0.6  # kW/ton
+                efficiency=0.6,  # kW/ton
             )
             network_manager.add_device_to_network(
                 equipment=chiller,
                 network_info=central_plant_network,
-                device_name=f"Chiller-{chiller_name}"
+                device_name=f"Chiller-{chiller_name}",
             )
 
     # Print network topology
@@ -349,14 +343,13 @@ async def run_brick_simulation():
 
     # Summary
     summary = network_manager.get_network_summary()
-    logger.info(f"Simulation ready with {summary['total_networks']} networks "
-                f"and {summary['total_devices']} devices")
+    logger.info(
+        f"Simulation ready with {summary['total_networks']} networks "
+        f"and {summary['total_devices']} devices"
+    )
 
     # 24-hour outdoor temperature pattern
-    outdoor_temps = {
-        hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12)
-        for hour in range(24)
-    }
+    outdoor_temps = {hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12) for hour in range(24)}
 
     occupied_hours = [(8, 18)]
     occupancy = 5
@@ -390,7 +383,7 @@ async def run_brick_simulation():
                     minutes=60,
                     outdoor_temp=outdoor_temp,
                     vav_cooling_effect=vav_effect,
-                    time_of_day=(hour, 0)
+                    time_of_day=(hour, 0),
                 )
 
                 vav.zone_temp += temp_change
@@ -411,8 +404,7 @@ async def run_brick_simulation():
 
             # Log summary every hour
             avg_zone_temp = (
-                sum(v.zone_temp for v in all_vavs.values()) / len(all_vavs)
-                if all_vavs else 72.0
+                sum(v.zone_temp for v in all_vavs.values()) / len(all_vavs) if all_vavs else 72.0
             )
             cooling_count = sum(1 for v in all_vavs.values() if v.mode == "cooling")
             heating_count = sum(1 for v in all_vavs.values() if v.mode == "heating")
@@ -441,7 +433,7 @@ async def main():
     bacnet_address = get_bacnet_address()
     simulation_mode = os.getenv("SIMULATION_MODE", "simple")
 
-    logger.info(f"Configuration:")
+    logger.info("Configuration:")
     logger.info(f"  BACnet Address: {bacnet_address}")
     logger.info(f"  BACnet Port: {os.getenv('BACNET_PORT', '47808')}")
     logger.info(f"  Simulation Mode: {simulation_mode}")

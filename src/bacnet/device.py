@@ -17,7 +17,7 @@ Usage:
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from src.core.constants import (
@@ -48,7 +48,7 @@ def hex_to_padded_octets(hex_string: str) -> str:
     hex_string = hex_string.replace("0x", "")
     if len(hex_string) % 2 != 0:
         hex_string = "0" + hex_string
-    return "0x" + "".join([hex_string[i:i+2] for i in range(0, len(hex_string), 2)])
+    return "0x" + "".join([hex_string[i : i + 2] for i in range(0, len(hex_string), 2)])
 
 
 @dataclass
@@ -72,6 +72,7 @@ class BACnetDeviceConfig:
         model_name: Model name for device object
         description: Device description
     """
+
     device_id: Optional[int] = None
     device_name: Optional[str] = None
     ip_address: Optional[str] = None
@@ -92,10 +93,7 @@ class BACnetDeviceConfig:
         return self.vlan_name is not None
 
 
-def _build_device_config(
-    equipment_name: str,
-    config: BACnetDeviceConfig
-) -> List[Dict[str, Any]]:
+def _build_device_config(equipment_name: str, config: BACnetDeviceConfig) -> List[Dict[str, Any]]:
     """
     Build the JSON configuration for a BACnet device.
 
@@ -134,55 +132,58 @@ def _build_device_config(
             "system-status": "operational",
             "vendor-identifier": BACNET_VENDOR_ID,
             "vendor-name": BACNET_VENDOR_NAME,
-            "description": description
+            "description": description,
         }
     ]
 
     # Add network port configuration
     if config.is_ip_mode():
         ip_addr = config.ip_address
-        if ip_addr and '/' in ip_addr:
-            ip_addr = ip_addr.split('/')[0]
+        if ip_addr and "/" in ip_addr:
+            ip_addr = ip_addr.split("/")[0]
 
-        app_config.append({
-            "changes-pending": False,
-            "ip-address": ip_addr,
-            "ip-subnet-mask": config.subnet_mask,
-            "ip-default-gateway": config.gateway,
-            "bacnet-ip-mode": "normal",
-            "bacnet-ip-udp-port": config.port,
-            "network-type": "ipv4",
-            "object-identifier": "network-port,1",
-            "object-name": "BACnet-IP-Port",
-            "object-type": "network-port",
-            "out-of-service": False,
-            "protocol-level": "bacnet-application",
-            "reliability": "no-fault-detected"
-        })
+        app_config.append(
+            {
+                "changes-pending": False,
+                "ip-address": ip_addr,
+                "ip-subnet-mask": config.subnet_mask,
+                "ip-default-gateway": config.gateway,
+                "bacnet-ip-mode": "normal",
+                "bacnet-ip-udp-port": config.port,
+                "network-type": "ipv4",
+                "object-identifier": "network-port,1",
+                "object-name": "BACnet-IP-Port",
+                "object-type": "network-port",
+                "out-of-service": False,
+                "protocol-level": "bacnet-application",
+                "reliability": "no-fault-detected",
+            }
+        )
     else:
         # VLAN mode (default for testing)
         vlan_name = config.vlan_name or "vlan"
         mac_address = config.mac_address or "0x01"
         formatted_mac = hex_to_padded_octets(mac_address)
 
-        app_config.append({
-            "object-identifier": "network-port,1",
-            "object-name": "VirtualPort",
-            "object-type": "network-port",
-            "network-type": "virtual",
-            "network-interface-name": vlan_name,
-            "mac-address": formatted_mac,
-            "out-of-service": False,
-            "protocol-level": "bacnet-application",
-            "reliability": "no-fault-detected"
-        })
+        app_config.append(
+            {
+                "object-identifier": "network-port,1",
+                "object-name": "VirtualPort",
+                "object-type": "network-port",
+                "network-type": "virtual",
+                "network-interface-name": vlan_name,
+                "mac-address": formatted_mac,
+                "out-of-service": False,
+                "protocol-level": "bacnet-application",
+                "reliability": "no-fault-detected",
+            }
+        )
 
     return app_config
 
 
 def create_bacnet_device(
-    equipment: Any,
-    config: Optional[BACnetDeviceConfig] = None
+    equipment: Any, config: Optional[BACnetDeviceConfig] = None
 ) -> Optional["Application"]:
     """
     Create a BACnet device for the given equipment.
@@ -204,18 +205,16 @@ def create_bacnet_device(
     if config is None:
         config = BACnetDeviceConfig()
 
-    equipment_name = getattr(equipment, 'name', 'Unknown')
+    equipment_name = getattr(equipment, "name", "Unknown")
 
     # Log creation
     if config.is_ip_mode():
-        logger.info(
-            "Creating BACnet device for %s on IP %s",
-            equipment_name, config.ip_address
-        )
+        logger.info("Creating BACnet device for %s on IP %s", equipment_name, config.ip_address)
     else:
         logger.info(
             "Creating BACnet device for %s on VLAN %s",
-            equipment_name, config.vlan_name or "default"
+            equipment_name,
+            config.vlan_name or "default",
         )
 
     # Build configuration
@@ -227,7 +226,7 @@ def create_bacnet_device(
 
         if app:
             device_name = config.device_name or f"Device-{equipment_name}"
-            setattr(app, 'name', device_name)
+            setattr(app, "name", device_name)
     except Exception as e:
         logger.exception("Error creating BACnet device for %s: %s", equipment_name, e)
         return None
@@ -237,10 +236,7 @@ def create_bacnet_device(
         process_vars = equipment.get_process_variables()
         metadata = equipment.get_process_variables_metadata()
     except AttributeError as e:
-        logger.error(
-            "Equipment %s missing required methods: %s",
-            equipment_name, e
-        )
+        logger.error("Equipment %s missing required methods: %s", equipment_name, e)
         return app
 
     # Add BACnet points for each process variable
@@ -263,10 +259,7 @@ def create_bacnet_device(
 
         # Create and add the point
         point_obj = create_bacnet_point(
-            point_id=point_id,
-            point_name=point_name,
-            point_meta=point_meta,
-            value=value
+            point_id=point_id, point_name=point_name, point_meta=point_meta, value=value
         )
 
         if point_obj:

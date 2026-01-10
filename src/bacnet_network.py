@@ -29,22 +29,24 @@ Network Topology:
                 +-- VAV-N-1, VAV-N-2, ...
 """
 
-import asyncio
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
 try:
     from bacpypes3.vlan import VirtualNetwork
-    from bacpypes3.app import Application
+    from bacpypes3.app import Application  # noqa: F401 - used for isinstance checks
+
     BACPYPES_AVAILABLE = True
 except ImportError:
     BACPYPES_AVAILABLE = False
     VirtualNetwork = None
+    Application = None  # noqa: F811
 
 
 @dataclass
 class NetworkInfo:
     """Information about a BACnet network."""
+
     network_number: int
     name: str
     network: Optional[Any] = None  # VirtualNetwork instance
@@ -107,10 +109,7 @@ class BACnetNetworkManager:
         vlan = VirtualNetwork(network_name)
 
         network_info = NetworkInfo(
-            network_number=network_number,
-            name=network_name,
-            network=vlan,
-            devices=[]
+            network_number=network_number, name=network_name, network=vlan, devices=[]
         )
 
         self.networks[network_number] = network_info
@@ -139,7 +138,7 @@ class BACnetNetworkManager:
             name=network_name,
             network=vlan,
             devices=[],
-            ahu_name=ahu_name
+            ahu_name=ahu_name,
         )
 
         self.networks[network_number] = network_info
@@ -150,7 +149,7 @@ class BACnetNetworkManager:
         equipment,
         network_info: NetworkInfo,
         device_id: Optional[int] = None,
-        device_name: Optional[str] = None
+        device_name: Optional[str] = None,
     ) -> Optional[Any]:
         """
         Add a device to a specific network.
@@ -172,14 +171,16 @@ class BACnetNetworkManager:
 
         mac_address = self._get_next_mac(network_info.network_number)
 
-        print(f"  Adding {device_name} (ID: {device_id}, MAC: {mac_address}) to {network_info.name}")
+        print(
+            f"  Adding {device_name} (ID: {device_id}, MAC: {mac_address}) to {network_info.name}"
+        )
 
         # Create the BACnet device using the equipment's method
         app = equipment.create_bacpypes3_device(
             device_id=device_id,
             device_name=device_name,
             network_interface_name=network_info.name,
-            mac_address=mac_address
+            mac_address=mac_address,
         )
 
         if app:
@@ -214,7 +215,7 @@ class BACnetNetworkManager:
             net = self.networks[self.CENTRAL_PLANT_NETWORK]
             print(f"\n[Network {net.network_number}] {net.name.upper()}")
             for device in net.devices:
-                name = getattr(device, 'name', str(device.device_object.objectIdentifier))
+                name = getattr(device, "name", str(device.device_object.objectIdentifier))
                 dev_id = device.device_object.objectIdentifier[1]
                 print(f"    +-- {name} (Device {dev_id})")
 
@@ -226,7 +227,7 @@ class BACnetNetworkManager:
             net = self.networks[net_num]
             print(f"\n[Network {net.network_number}] {net.name.upper()}")
             for device in net.devices:
-                name = getattr(device, 'name', str(device.device_object.objectIdentifier))
+                name = getattr(device, "name", str(device.device_object.objectIdentifier))
                 dev_id = device.device_object.objectIdentifier[1]
                 print(f"    +-- {name} (Device {dev_id})")
 
@@ -248,16 +249,15 @@ class BACnetNetworkManager:
                 net_num: {
                     "name": net_info.name,
                     "ahu": net_info.ahu_name,
-                    "device_count": len(net_info.devices)
+                    "device_count": len(net_info.devices),
                 }
                 for net_num, net_info in self.networks.items()
-            }
+            },
         }
 
 
 def create_building_networks_from_brick(
-    building_structure: Dict[str, Any],
-    network_manager: Optional[BACnetNetworkManager] = None
+    building_structure: Dict[str, Any], network_manager: Optional[BACnetNetworkManager] = None
 ) -> BACnetNetworkManager:
     """
     Create a complete BACnet network topology from a parsed Brick schema.
@@ -286,9 +286,9 @@ def create_building_networks_from_brick(
 
     # Create central plant network if there are central plant devices
     has_central_plant = (
-        building_structure.get("chillers") or
-        building_structure.get("boilers") or
-        building_structure.get("cooling_towers")
+        building_structure.get("chillers")
+        or building_structure.get("boilers")
+        or building_structure.get("cooling_towers")
     )
 
     if has_central_plant:
@@ -302,10 +302,7 @@ def create_building_networks_from_brick(
     return network_manager
 
 
-def get_vav_network_assignment(
-    vav_name: str,
-    building_structure: Dict[str, Any]
-) -> Optional[str]:
+def get_vav_network_assignment(vav_name: str, building_structure: Dict[str, Any]) -> Optional[str]:
     """
     Determine which AHU network a VAV should be assigned to.
 

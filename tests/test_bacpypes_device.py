@@ -3,7 +3,7 @@ import unittest
 import sys
 import os
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from bacpypes3.app import Application
 from bacpypes3.vlan import VirtualNetwork
@@ -61,7 +61,7 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
                 self.fail("device_app is None after creation")
                 return
 
-            self.vlan.add_node(device_app) # Reverted to add app directly
+            self.vlan.add_node(device_app)  # Reverted to add app directly
 
             self.assertIsInstance(device_app, Application)
             device_obj = device_app.device_object
@@ -103,7 +103,7 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
                 self.fail("device_app is None after creation")
                 return
 
-            self.vlan.add_node(device_app) # Reverted to add app directly
+            self.vlan.add_node(device_app)  # Reverted to add app directly
 
             initial_temp = self.vav.zone_temp
             zone_temp_point = device_app.get_object_name("zone_temp")
@@ -143,33 +143,41 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
             )
 
             device1_app = self.vav.create_bacpypes3_device(
-                device_id=1001, device_name="VAV-001", network_interface_name="test-vlan", mac_address="0x01"
+                device_id=1001,
+                device_name="VAV-001",
+                network_interface_name="test-vlan",
+                mac_address="0x01",
             )
             self.assertIsNotNone(device1_app, "Failed to create device1_app")
             if not device1_app:
                 self.fail("device1_app is None")
                 return
-            self.vlan.add_node(device1_app) # Reverted to add app directly
+            self.vlan.add_node(device1_app)  # Reverted to add app directly
 
             device2_app = vav2.create_bacpypes3_device(
-                device_id=1002, device_name="VAV-002", network_interface_name="test-vlan", mac_address="0x02"
+                device_id=1002,
+                device_name="VAV-002",
+                network_interface_name="test-vlan",
+                mac_address="0x02",
             )
             self.assertIsNotNone(device2_app, "Failed to create device2_app")
             if not device2_app:
                 self.fail("device2_app is None")
                 return
-            self.vlan.add_node(device2_app) # Reverted to add app directly
+            self.vlan.add_node(device2_app)  # Reverted to add app directly
 
             controller_device_object = DeviceObject(
                 objectIdentifier=("device", 1000), objectName=controller_name, vendorIdentifier=999
             )
-            controller_app = Application(controller_device_object, network_interface_name="test-vlan", aseID=None)
+            controller_app = Application(
+                controller_device_object, network_interface_name="test-vlan", aseID=None
+            )
             self.assertIsNotNone(controller_app, "Failed to create controller_app")
             if not controller_app:
                 self.fail("controller_app is None")
                 return
             setattr(controller_app, "name", controller_name)  # Ensure name is set
-            self.vlan.add_node(controller_app) # Reverted to add app directly
+            self.vlan.add_node(controller_app)  # Reverted to add app directly
 
             await asyncio.sleep(0.2)
             i_ams = await controller_app.who_is()
@@ -191,7 +199,10 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
         try:
             assert self.vlan is not None, "VirtualNetwork not initialized"
             device_app = self.vav.create_bacpypes3_device(
-                device_id=1001, device_name="VAV-001", network_interface_name="test-vlan", mac_address="0x01"
+                device_id=1001,
+                device_name="VAV-001",
+                network_interface_name="test-vlan",
+                mac_address="0x01",
             )
             self.assertIsNotNone(device_app, "Failed to create device_app")
             if not device_app:
@@ -199,13 +210,15 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
                 return
             # self.vlan.add_node(device_app) # OLD
             device_adapter_node = device_app.adapters[0]
-            device_adapter_node.name = device_app.localDevice.objectName # Use localDevice
+            device_adapter_node.name = device_app.localDevice.objectName  # Use localDevice
             self.vlan.add_node(device_adapter_node)
 
             client_device_object = DeviceObject(
                 objectIdentifier=("device", 2000), objectName=client_name, vendorIdentifier=999
             )
-            client_app = Application(client_device_object, network_interface_name="test-vlan", aseID=None)
+            client_app = Application(
+                client_device_object, network_interface_name="test-vlan", aseID=None
+            )
             self.assertIsNotNone(client_app, "Failed to create client_app")
             if not client_app:
                 self.fail("client_app is None")
@@ -213,7 +226,7 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
             # setattr(client_app, "name", client_name)  # REMOVED
             # self.vlan.add_node(client_app) # OLD
             client_adapter_node = client_app.adapters[0]
-            client_adapter_node.name = client_app.localDevice.objectName # Use localDevice
+            client_adapter_node.name = client_app.localDevice.objectName  # Use localDevice
             self.vlan.add_node(client_adapter_node)
 
             await asyncio.sleep(0.2)
@@ -230,7 +243,9 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
                 return
 
             zone_temp_bacnet_object = device_app.get_object_name("zone_temp")
-            self.assertIsNotNone(zone_temp_bacnet_object, "BACnet object 'zone_temp' not found on device_app")
+            self.assertIsNotNone(
+                zone_temp_bacnet_object, "BACnet object 'zone_temp' not found on device_app"
+            )
             if zone_temp_bacnet_object is None:
                 self.fail("zone_temp_bacnet_object is None")
                 return
@@ -255,7 +270,10 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
         try:
             assert self.vlan is not None, "VirtualNetwork not initialized"
             device_app = self.vav.create_bacpypes3_device(
-                device_id=1001, device_name="VAV-001", network_interface_name="test-vlan", mac_address="0x01"
+                device_id=1001,
+                device_name="VAV-001",
+                network_interface_name="test-vlan",
+                mac_address="0x01",
             )
             self.assertIsNotNone(device_app, "Failed to create device_app")
             if not device_app:
@@ -263,13 +281,15 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
                 return
             # self.vlan.add_node(device_app) # OLD
             device_adapter_node = device_app.adapters[0]
-            device_adapter_node.name = device_app.localDevice.objectName # Use localDevice
+            device_adapter_node.name = device_app.localDevice.objectName  # Use localDevice
             self.vlan.add_node(device_adapter_node)
 
             client_device_object = DeviceObject(
                 objectIdentifier=("device", 2000), objectName=client_name, vendorIdentifier=999
             )
-            client_app = Application(client_device_object, network_interface_name="test-vlan", aseID=None)
+            client_app = Application(
+                client_device_object, network_interface_name="test-vlan", aseID=None
+            )
             self.assertIsNotNone(client_app, "Failed to create client_app")
             if not client_app:
                 self.fail("client_app is None")
@@ -277,7 +297,7 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
             # setattr(client_app, "name", client_name)  # REMOVED
             # self.vlan.add_node(client_app) # OLD
             client_adapter_node = client_app.adapters[0]
-            client_adapter_node.name = client_app.localDevice.objectName # Use localDevice
+            client_adapter_node.name = client_app.localDevice.objectName  # Use localDevice
             self.vlan.add_node(client_adapter_node)
 
             await asyncio.sleep(0.2)
@@ -294,7 +314,9 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
                 return
 
             setpoint_bacnet_object = device_app.get_object_name("zone_temp_setpoint")
-            self.assertIsNotNone(setpoint_bacnet_object, "BACnet object 'zone_temp_setpoint' not found on device_app")
+            self.assertIsNotNone(
+                setpoint_bacnet_object, "BACnet object 'zone_temp_setpoint' not found on device_app"
+            )
             if setpoint_bacnet_object is None:
                 self.fail("setpoint_bacnet_object is None")
                 return
@@ -302,7 +324,10 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
             setpoint_id_to_write = setpoint_bacnet_object.objectIdentifier
             new_setpoint = 75.0
             await client_app.write_property(
-                address=vav_address, objid=setpoint_id_to_write, prop="presentValue", value=Real(new_setpoint)
+                address=vav_address,
+                objid=setpoint_id_to_write,
+                prop="presentValue",
+                value=Real(new_setpoint),
             )
             await asyncio.sleep(0.1)
             self.assertEqual(setpoint_bacnet_object.presentValue, new_setpoint)
@@ -329,4 +354,4 @@ class BACpypesVAVDeviceTests(unittest.IsolatedAsyncioTestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() # Ensure unittest.main() is called correctly
+    unittest.main()  # Ensure unittest.main() is called correctly

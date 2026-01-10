@@ -78,9 +78,7 @@ class CmdShell(Cmd, CmdDebugging):
         for adapter, i_am_router_to_network in result_list:
             if _debug:
                 CmdShell._debug("    - adapter: %r", adapter)
-                CmdShell._debug(
-                    "    - i_am_router_to_network: %r", i_am_router_to_network
-                )
+                CmdShell._debug("    - i_am_router_to_network: %r", i_am_router_to_network)
 
             if i_am_router_to_network.npduSADR:
                 npdu_source = i_am_router_to_network.npduSADR
@@ -93,10 +91,7 @@ class CmdShell(Cmd, CmdDebugging):
                 previous_source = npdu_source
 
             report.append(
-                "    "
-                + ", ".join(
-                    str(dnet) for dnet in i_am_router_to_network.iartnNetworkList
-                )
+                "    " + ", ".join(str(dnet) for dnet in i_am_router_to_network.iartnNetworkList)
             )
 
         await self.response("\n".join(report))
@@ -169,7 +164,11 @@ async def main() -> None:
 
         # build an implementation under test
         devices = []
-        for name, iut_config in {key: value for key, value in settings.json.items() if key not in ("router", "networks", "BACpypes")}.items():
+        for name, iut_config in {
+            key: value
+            for key, value in settings.json.items()
+            if key not in ("router", "networks", "BACpypes")
+        }.items():
             iut = Application.from_json(iut_config)
             devices.append(iut)
             if _debug:

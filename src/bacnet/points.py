@@ -64,11 +64,10 @@ def _convert_unit(unit_text: Optional[str]) -> str:
 
 
 def create_bacnet_point(
-    point_id: int,
-    point_name: str,
-    point_meta: Dict[str, Any],
-    value: Any
-) -> Optional[Union[AnalogValueObject, BinaryValueObject, MultiStateValueObject, CharacterStringValueObject]]:
+    point_id: int, point_name: str, point_meta: Dict[str, Any], value: Any
+) -> Optional[
+    Union[AnalogValueObject, BinaryValueObject, MultiStateValueObject, CharacterStringValueObject]
+]:
     """
     Create a BACnet point object from process variable metadata.
 
@@ -92,18 +91,18 @@ def create_bacnet_point(
                 objectName=point_name,
                 description=label,
                 presentValue=float(value),
-                units=units
+                units=units,
             )
 
-        elif point_type == bool:
+        elif point_type is bool:
             return BinaryValueObject(
                 objectIdentifier=f"binary-value,{point_id}",
                 objectName=point_name,
                 description=label,
-                presentValue=bool(value)
+                presentValue=bool(value),
             )
 
-        elif point_type == str:
+        elif point_type is str:
             options = point_meta.get("options")
             if options:
                 # Multi-state value for enumerated strings
@@ -118,7 +117,7 @@ def create_bacnet_point(
                     description=label,
                     presentValue=state_index,
                     numberOfStates=len(options),
-                    stateText=options
+                    stateText=options,
                 )
             else:
                 # Character string for free-form text
@@ -126,7 +125,7 @@ def create_bacnet_point(
                     objectIdentifier=f"character-string-value,{point_id}",
                     objectName=point_name,
                     description=label,
-                    presentValue=str(value)
+                    presentValue=str(value),
                 )
 
     except Exception as e:
@@ -136,9 +135,7 @@ def create_bacnet_point(
 
 
 async def update_bacnet_points(
-    app: Any,
-    process_vars: Dict[str, Any],
-    epsilon: float = 0.001
+    app: Any, process_vars: Dict[str, Any], epsilon: float = 0.001
 ) -> int:
     """
     Update BACnet points from process variables.
@@ -193,8 +190,7 @@ async def update_bacnet_points(
 
             except Exception as e:
                 logger.warning(
-                    "Error updating point %s: %s",
-                    getattr(obj, 'objectName', 'unknown'), e
+                    "Error updating point %s: %s", getattr(obj, "objectName", "unknown"), e
                 )
 
         if update_count > 0:
@@ -252,5 +248,5 @@ def _update_fallback(obj: Any, value: Any) -> bool:
             obj.presentValue = value
             return True
     except Exception as e:
-        logger.debug("Could not update %s: %s", getattr(obj, 'objectName', 'unknown'), e)
+        logger.debug("Could not update %s: %s", getattr(obj, "objectName", "unknown"), e)
     return False

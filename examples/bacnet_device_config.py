@@ -4,6 +4,7 @@ This script provides helper functions for creating BACnet device configurations
 that are compatible with BACpypes3.
 """
 
+
 def create_device_config(device_id, device_name):
     """Create a basic device configuration."""
     # Make sure device_id is an integer
@@ -18,8 +19,9 @@ def create_device_config(device_id, device_name):
         "protocol-version": 1,
         "protocol-revision": 19,
         "application-software-version": "1.0",
-        "description": f"Virtual VAV Box - {device_name}"
+        "description": f"Virtual VAV Box - {device_name}",
     }
+
 
 def create_virtual_network_port(network_name, mac_address):
     """Create a virtual network port configuration."""
@@ -29,8 +31,9 @@ def create_virtual_network_port(network_name, mac_address):
         "object-type": "network-port",
         "network-type": "virtual",
         "network-interface-name": network_name,
-        "mac-address": mac_address
+        "mac-address": mac_address,
     }
+
 
 def create_analog_value(object_id, name, description, initial_value=0.0, units="no-units"):
     """Create an analog value object configuration."""
@@ -40,8 +43,9 @@ def create_analog_value(object_id, name, description, initial_value=0.0, units="
         "object-type": "analog-value",
         "present-value": float(initial_value),
         "description": description,
-        "units": units
+        "units": units,
     }
+
 
 def create_binary_value(object_id, name, description, initial_value=False):
     """Create a binary value object configuration."""
@@ -50,8 +54,9 @@ def create_binary_value(object_id, name, description, initial_value=False):
         "object-name": name,
         "object-type": "binary-value",
         "present-value": bool(initial_value),
-        "description": description
+        "description": description,
     }
+
 
 def create_multi_state_value(object_id, name, description, states, initial_state=1):
     """Create a multi-state value object configuration."""
@@ -62,8 +67,9 @@ def create_multi_state_value(object_id, name, description, states, initial_state
         "number-of-states": len(states),
         "state-text": states,
         "present-value": initial_state,
-        "description": description
+        "description": description,
     }
+
 
 # Unit conversion helpers
 def convert_unit_text(unit_text):
