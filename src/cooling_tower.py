@@ -1,5 +1,6 @@
 import logging
 import math
+from typing import Any, Dict
 
 from .base_equip import BACPypesApplicationMixin
 
@@ -12,8 +13,9 @@ class CoolingTower(BACPypesApplicationMixin):
     used to reject heat from water-cooled chillers.
     """
     
-    def __init__(self, name, capacity, design_approach, design_range, design_wet_bulb,
-                 min_speed, tower_type, fan_power, num_cells):
+    def __init__(self, name: str, capacity: float, design_approach: float, design_range: float,
+                 design_wet_bulb: float, min_speed: float, tower_type: str, fan_power: float,
+                 num_cells: int) -> None:
         """
         Initialize Cooling Tower with specified parameters.
         
@@ -61,18 +63,19 @@ class CoolingTower(BACPypesApplicationMixin):
         return self.entering_water_temp - self.leaving_water_temp
     
     @property
-    def outdoor_wet_bulb(self):
+    def outdoor_wet_bulb(self) -> float:
         return self.current_wet_bulb
-    
+
     @property
-    def condenser_water_supply_temp(self):
+    def condenser_water_supply_temp(self) -> float:
         return self.leaving_water_temp
-    
+
     @property
-    def condenser_water_return_temp(self):
+    def condenser_water_return_temp(self) -> float:
         return self.entering_water_temp
-    
-    def update_load(self, load, entering_water_temp, ambient_wet_bulb, condenser_water_flow, auto_adjust_fan=True):
+
+    def update_load(self, load: float, entering_water_temp: float, ambient_wet_bulb: float,
+                    condenser_water_flow: float, auto_adjust_fan: bool = True) -> None:
         """
         Update cooling tower with new load and conditions.
         
@@ -100,20 +103,20 @@ class CoolingTower(BACPypesApplicationMixin):
         if auto_adjust_fan:
             self._adjust_fan_speed()
     
-    def set_fan_speed(self, speed):
+    def set_fan_speed(self, speed: float) -> None:
         """Set fan speed manually."""
         # Ensure speed is between min_speed and 100%
         self.fan_speed = max(min(speed, 100), 0 if self.current_load == 0 else self.min_speed)
-    
-    def calculate_approach(self):
+
+    def calculate_approach(self) -> float:
         """Calculate current approach temperature (LWT - WB)."""
         return self.leaving_water_temp - self.current_wet_bulb
-    
-    def calculate_range(self):
+
+    def calculate_range(self) -> float:
         """Calculate current range temperature (EWT - LWT)."""
         return self.entering_water_temp - self.leaving_water_temp
-    
-    def calculate_efficiency(self):
+
+    def calculate_efficiency(self) -> float:
         """Calculate cooling tower efficiency based on approach temperature."""
         if self.current_load == 0:
             return 0
@@ -132,8 +135,8 @@ class CoolingTower(BACPypesApplicationMixin):
         
         # Limit to 0-1 range
         return max(0, min(1, efficiency))
-    
-    def calculate_power_consumption(self):
+
+    def calculate_power_consumption(self) -> float:
         """Calculate current power consumption in kW."""
         if self.current_load == 0 or self.fan_speed == 0:
             return 0
@@ -146,15 +149,15 @@ class CoolingTower(BACPypesApplicationMixin):
         cell_power = self.fan_power / self.num_cells
         
         return power_factor * cell_power * active_cells
-    
-    def calculate_energy_consumption(self, hours=1):
+
+    def calculate_energy_consumption(self, hours: float = 1) -> float:
         """Calculate energy consumption in kWh for a specified duration."""
         power_kw = self.calculate_power_consumption()
         energy_kwh = power_kw * hours
-        
+
         return energy_kwh
-    
-    def calculate_water_consumption(self):
+
+    def calculate_water_consumption(self) -> float:
         """Calculate water consumption in gallons per hour."""
         if self.current_load == 0:
             return 0
@@ -181,8 +184,8 @@ class CoolingTower(BACPypesApplicationMixin):
         total_water_gph = (evaporation_gpm + drift_gpm + blowdown_gpm) * 60
         
         return total_water_gph
-    
-    def _calculate_required_approach(self):
+
+    def _calculate_required_approach(self) -> float:
         """Calculate required approach temperature based on current conditions."""
         # Base approach at design conditions
         base_approach = self.design_approach
@@ -211,8 +214,8 @@ class CoolingTower(BACPypesApplicationMixin):
         
         # Apply minimum approach limit (can't go below ~1°F in practical towers)
         return max(1, approach)
-    
-    def _adjust_fan_speed(self):
+
+    def _adjust_fan_speed(self) -> None:
         """Adjust fan speed based on required approach and current conditions."""
         # Calculate target approach based on load and wet bulb
         target_approach = self._calculate_required_approach()
@@ -244,8 +247,8 @@ class CoolingTower(BACPypesApplicationMixin):
         
         # Limit to 0-100% range
         self.fan_speed = max(0, min(100, target_speed))
-    
-    def _calculate_active_cells(self):
+
+    def _calculate_active_cells(self) -> int:
         """Calculate number of active cells based on load."""
         if self.current_load == 0:
             return 0
@@ -256,8 +259,8 @@ class CoolingTower(BACPypesApplicationMixin):
         
         # Ensure at least one cell is active if there's any load
         return max(1, min(active_cells, self.num_cells))
-    
-    def get_process_variables(self):
+
+    def get_process_variables(self) -> Dict[str, Any]:
         """Return a dictionary of all process variables for the cooling tower."""
         approach = self.calculate_approach()
         range_temp = self.calculate_range()
@@ -293,7 +296,7 @@ class CoolingTower(BACPypesApplicationMixin):
         }
     
     @classmethod
-    def get_process_variables_metadata(cls):
+    def get_process_variables_metadata(cls) -> Dict[str, Dict[str, Any]]:
         """Return metadata for all process variables."""
         return {
             "name": {
@@ -433,7 +436,7 @@ class CoolingTower(BACPypesApplicationMixin):
             }
         }
     
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of cooling tower state."""
         return (f"Cooling Tower {self.name}: "
                 f"Load={self.current_load:.1f} tons ({self.current_load/self.capacity*100:.1f}%), "
@@ -443,8 +446,8 @@ class CoolingTower(BACPypesApplicationMixin):
                 f"Approach={self.calculate_approach():.1f}°F, "
                 f"Range={self.calculate_range():.1f}°F, "
                 f"Fan={self.fan_speed:.1f}%")
-                
-    def get_condenser_water_supply_temp(self):
+
+    def get_condenser_water_supply_temp(self) -> float:
         """Calculate condenser water supply temperature (leaving water temperature)."""
         # This is the leaving water temperature
         return self.leaving_water_temp

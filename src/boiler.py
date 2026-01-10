@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, Optional
 
 from .base_equip import BACPypesApplicationMixin
 from src.core.constants import (
@@ -15,10 +16,11 @@ class Boiler(BACPypesApplicationMixin):
     """
     Boiler class that models the performance of gas-fired or electric boilers.
     """
-    
-    def __init__(self, name, fuel_type, capacity, design_efficiency, design_entering_water_temp, 
-                 design_leaving_water_temp, min_part_load_ratio, design_hot_water_flow, 
-                 condensing=False, turndown_ratio=4.0):
+
+    def __init__(self, name: str, fuel_type: str, capacity: float, design_efficiency: float,
+                 design_entering_water_temp: float, design_leaving_water_temp: float,
+                 min_part_load_ratio: float, design_hot_water_flow: float,
+                 condensing: bool = False, turndown_ratio: float = 4.0) -> None:
         """
         Initialize Boiler with specified parameters.
         
@@ -69,7 +71,8 @@ class Boiler(BACPypesApplicationMixin):
         if fuel_type.lower() not in ["gas", "electric"]:
             raise ValueError("Fuel type must be 'gas' or 'electric'")
     
-    def update_load(self, load, entering_water_temp, hot_water_flow, ambient_temp, simulation_time_step=None):
+    def update_load(self, load: float, entering_water_temp: float, hot_water_flow: float,
+                    ambient_temp: float, simulation_time_step: Optional[float] = None) -> None:
         """
         Update boiler with new load and conditions.
         
@@ -113,17 +116,18 @@ class Boiler(BACPypesApplicationMixin):
             self.current_efficiency = 0
             self.leaving_water_temp = self.entering_water_temp  # No heat addition
     
-    def set_leaving_water_temp_setpoint(self, setpoint):
+    def set_leaving_water_temp_setpoint(self, setpoint: float) -> None:
         """Set leaving hot water temperature setpoint."""
         self.design_leaving_water_temp = setpoint
-    
-    def set_cycling_parameters(self, min_on_time=10, min_off_time=5, cycles_per_hour_limit=6):
+
+    def set_cycling_parameters(self, min_on_time: float = 10, min_off_time: float = 5,
+                               cycles_per_hour_limit: int = 6) -> None:
         """Set boiler cycling control parameters."""
         self.min_on_time = min_on_time
         self.min_off_time = min_off_time
         self.cycles_per_hour_limit = cycles_per_hour_limit
-    
-    def calculate_fuel_consumption(self):
+
+    def calculate_fuel_consumption(self) -> Dict[str, float]:
         """
         Calculate fuel consumption based on load and efficiency.
         
@@ -153,8 +157,8 @@ class Boiler(BACPypesApplicationMixin):
             kilowatt_hours = self.current_load * 1000 / (self.current_efficiency * BTU_PER_KWH)
             
             return {"kilowatt_hours": kilowatt_hours}
-    
-    def calculate_energy_consumption(self, hours=1):
+
+    def calculate_energy_consumption(self, hours: float = 1) -> Dict[str, float]:
         """
         Calculate energy consumption for a specified duration.
         
@@ -186,8 +190,8 @@ class Boiler(BACPypesApplicationMixin):
                 "kwh": kwh,
                 "mmbtu": mmbtu
             }
-    
-    def _calculate_performance(self, load):
+
+    def _calculate_performance(self, load: float) -> None:
         """Calculate performance at current conditions."""
         # Calculate leaving hot water temperature based on load and flow
         if self.hot_water_flow > 0:
@@ -204,8 +208,8 @@ class Boiler(BACPypesApplicationMixin):
         
         # Calculate efficiency at these conditions
         self.current_efficiency = self._calculate_efficiency(load)
-    
-    def _calculate_efficiency(self, load):
+
+    def _calculate_efficiency(self, load: float) -> float:
         """Calculate efficiency at current conditions."""
         if load <= 0 or not self.is_on:
             return 0
@@ -253,8 +257,8 @@ class Boiler(BACPypesApplicationMixin):
         
         # Ensure efficiency is in reasonable range
         return max(0.5, min(0.99, efficiency))
-    
-    def _handle_cycling(self, requested_load, time_step):
+
+    def _handle_cycling(self, requested_load: float, time_step: float) -> None:
         """Handle boiler cycling logic."""
         # Update time in current state
         self.time_in_current_state += time_step
@@ -283,10 +287,10 @@ class Boiler(BACPypesApplicationMixin):
         
         # Reset cycle counter every hour
         if time_step > 0:
-            self.cycles_in_current_hour = max(0, self.cycles_in_current_hour - 
+            self.cycles_in_current_hour = max(0, self.cycles_in_current_hour -
                                             (time_step / 60) * self.cycles_per_hour_limit)
-    
-    def get_process_variables(self):
+
+    def get_process_variables(self) -> Dict[str, Any]:
         """Return a dictionary of all process variables for the boiler."""
         fuel_consumption = self.calculate_fuel_consumption()
         
@@ -332,9 +336,9 @@ class Boiler(BACPypesApplicationMixin):
             })
         
         return variables
-    
+
     @classmethod
-    def get_process_variables_metadata(cls):
+    def get_process_variables_metadata(cls) -> Dict[str, Dict[str, Any]]:
         """Return metadata for all process variables."""
         return {
             "name": {
@@ -491,11 +495,11 @@ class Boiler(BACPypesApplicationMixin):
                 "unit": "kW"
             }
         }
-    
-    def __str__(self):
+
+    def __str__(self) -> str:
         """Return string representation of boiler state."""
         status = "ON" if self.is_on else "OFF"
-        
+
         return (f"Boiler {self.name} ({self.fuel_type.capitalize()}, {status}): "
                 f"Load={self.current_load:.1f} MBH ({self.current_load/self.capacity*100:.1f}%), "
                 f"EWT={self.entering_water_temp:.1f}°F, "

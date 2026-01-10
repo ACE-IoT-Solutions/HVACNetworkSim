@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from .base_equip import BACPypesApplicationMixin
 from src.core.constants import (
@@ -7,6 +8,9 @@ from src.core.constants import (
     WATER_HEAT_CONSTANT,
 )
 
+if TYPE_CHECKING:
+    from .cooling_tower import CoolingTower
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,10 +18,11 @@ class Chiller(BACPypesApplicationMixin):
     """
     Chiller class that models the performance of water-cooled or air-cooled chillers.
     """
-    
-    def __init__(self, name, cooling_type, capacity, design_cop, design_entering_condenser_temp,
-                 design_leaving_chilled_water_temp, min_part_load_ratio, design_chilled_water_flow,
-                 design_condenser_water_flow=None):
+
+    def __init__(self, name: str, cooling_type: str, capacity: float, design_cop: float,
+                 design_entering_condenser_temp: float, design_leaving_chilled_water_temp: float,
+                 min_part_load_ratio: float, design_chilled_water_flow: float,
+                 design_condenser_water_flow: Optional[float] = None) -> None:
         """
         Initialize Chiller with specified parameters.
         
@@ -67,15 +72,16 @@ class Chiller(BACPypesApplicationMixin):
         if cooling_type.lower() == "water_cooled" and design_condenser_water_flow is None:
             raise ValueError("Condenser water flow must be specified for water-cooled chillers")
     
-    def connect_cooling_tower(self, cooling_tower):
+    def connect_cooling_tower(self, cooling_tower: "CoolingTower") -> None:
         """Connect a cooling tower to a water-cooled chiller."""
         if self.cooling_type != "water_cooled":
             raise ValueError("Can only connect cooling tower to water-cooled chillers")
-            
+
         self.cooling_tower = cooling_tower
-    
-    def update_load(self, load, entering_chilled_water_temp, chilled_water_flow,
-                   ambient_wet_bulb=None, ambient_dry_bulb=None):
+
+    def update_load(self, load: float, entering_chilled_water_temp: float, chilled_water_flow: float,
+                    ambient_wet_bulb: Optional[float] = None,
+                    ambient_dry_bulb: Optional[float] = None) -> None:
         """
         Update chiller with new load and conditions.
         
@@ -134,18 +140,18 @@ class Chiller(BACPypesApplicationMixin):
         # Calculate performance at these conditions
         self._calculate_performance(limited_load)
     
-    def set_leaving_water_temp_setpoint(self, setpoint):
+    def set_leaving_water_temp_setpoint(self, setpoint: float) -> None:
         """Set leaving chilled water temperature setpoint."""
         # Store old setpoint for COP calculation adjustment
         self.old_setpoint = self.design_leaving_chilled_water_temp
         self.design_leaving_chilled_water_temp = setpoint
     
     @property
-    def current_power(self):
+    def current_power(self) -> float:
         """Get current power consumption in kW."""
         return self.calculate_power_consumption()
 
-    def calculate_power_consumption(self):
+    def calculate_power_consumption(self) -> float:
         """Calculate current power consumption in kW."""
         if self.current_load == 0 or self.current_cop == 0:
             return 0
@@ -155,7 +161,7 @@ class Chiller(BACPypesApplicationMixin):
         
         return power_kw
     
-    def calculate_system_power_consumption(self):
+    def calculate_system_power_consumption(self) -> float:
         """
         Calculate total system power consumption including cooling tower (if applicable).
         
@@ -169,21 +175,21 @@ class Chiller(BACPypesApplicationMixin):
         else:
             return chiller_power
     
-    def calculate_energy_consumption(self, hours=1):
+    def calculate_energy_consumption(self, hours: float = 1) -> float:
         """Calculate chiller energy consumption in kWh for a specified duration."""
         power_kw = self.calculate_power_consumption()
         energy_kwh = power_kw * hours
         
         return energy_kwh
     
-    def calculate_system_energy_consumption(self, hours=1):
+    def calculate_system_energy_consumption(self, hours: float = 1) -> float:
         """Calculate system energy consumption in kWh including cooling tower (if applicable)."""
         system_power = self.calculate_system_power_consumption()
         energy_kwh = system_power * hours
         
         return energy_kwh
     
-    def _calculate_performance(self, load):
+    def _calculate_performance(self, load: float) -> None:
         """Calculate performance at current conditions."""
         # Calculate leaving chilled water temperature based on load and flow
         delta_t = self._calculate_delta_t(load)
@@ -204,7 +210,7 @@ class Chiller(BACPypesApplicationMixin):
         # Calculate COP at these conditions
         self.current_cop = self._calculate_cop(load)
     
-    def _calculate_delta_t(self, load):
+    def _calculate_delta_t(self, load: float) -> float:
         """Calculate chilled water temperature differential based on load and flow."""
         if self.chilled_water_flow <= 0:
             return 0
@@ -215,7 +221,7 @@ class Chiller(BACPypesApplicationMixin):
         
         return delta_t
     
-    def _calculate_condenser_delta_t(self):
+    def _calculate_condenser_delta_t(self) -> float:
         """Calculate condenser water temperature rise across the chiller."""
         if self.condenser_water_flow <= 0 or self.current_load == 0:
             return 0
@@ -234,7 +240,7 @@ class Chiller(BACPypesApplicationMixin):
         
         return delta_t
     
-    def _calculate_cop(self, load):
+    def _calculate_cop(self, load: float) -> float:
         """Calculate COP at current conditions."""
         if load <= 0:
             return 0
@@ -284,7 +290,8 @@ class Chiller(BACPypesApplicationMixin):
         
         return max(0, cop)
     
-    def _estimate_cop(self, load, entering_chilled_water_temp, ambient_wet_bulb):
+    def _estimate_cop(self, load: float, entering_chilled_water_temp: float,
+                      ambient_wet_bulb: Optional[float]) -> float:
         """Estimate COP for cooling tower calculation - simplified version."""
         # Use design COP as a starting point
         estimated_cop = self.design_cop
@@ -306,7 +313,7 @@ class Chiller(BACPypesApplicationMixin):
         
         return max(0.1, estimated_cop)  # Prevent division by zero
     
-    def get_process_variables(self):
+    def get_process_variables(self) -> Dict[str, Any]:
         """Return a dictionary of all process variables for the chiller."""
         power = self.calculate_power_consumption()
         system_power = self.calculate_system_power_consumption()
@@ -344,7 +351,7 @@ class Chiller(BACPypesApplicationMixin):
         return variables
     
     @classmethod
-    def get_process_variables_metadata(cls):
+    def get_process_variables_metadata(cls) -> Dict[str, Dict[str, Any]]:
         """Return metadata for all process variables."""
         metadata = {
             "name": {
@@ -479,7 +486,7 @@ class Chiller(BACPypesApplicationMixin):
         
         return metadata
     
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of chiller state."""
         return (f"Chiller {self.name} ({self.cooling_type}): "
                 f"Load={self.current_load:.1f} tons ({self.current_load/self.capacity*100:.1f}%), "
