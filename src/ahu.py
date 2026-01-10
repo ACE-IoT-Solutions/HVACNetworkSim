@@ -1,5 +1,19 @@
+import logging
+from typing import Dict, Any, List, Optional
+
 from src.vav_box import PIDController
 from src.base_equip import BACPypesApplicationMixin
+from src.core.constants import (
+    AIR_DENSITY,
+    AIR_SPECIFIC_HEAT,
+    BTU_PER_KWH,
+    WATER_HEAT_CONSTANT,
+    DEFAULT_PID_KP,
+    DEFAULT_PID_KI,
+    DEFAULT_PID_KD,
+)
+
+logger = logging.getLogger(__name__)
 
 class AirHandlingUnit(BACPypesApplicationMixin):
     """
@@ -195,19 +209,17 @@ class AirHandlingUnit(BACPypesApplicationMixin):
             if self.cooling_type == "dx":
                 self.active_compressor_stages = 0
     
-    def _calculate_energy_usage(self):
+    def _calculate_energy_usage(self) -> None:
         """Calculate energy usage based on current operation."""
-        # Constants for energy calculations
-        AIR_DENSITY = 0.075  # lb/ft³
-        SPECIFIC_HEAT = 0.24  # BTU/lb·°F
-        
-        # Calculate air mass flow (lb/hr)
-        mass_flow = self.current_total_airflow * 60 * AIR_DENSITY  # CFM → ft³/hr → lb/hr
-        
+        # Calculate air mass flow (lb/hr): CFM × 60 min/hr × density
+        mass_flow = self.current_total_airflow * 60 * AIR_DENSITY
+
         # Calculate cooling energy (BTU/hr)
         if self.cooling_valve_position > 0:
             delta_t = self.outdoor_temp - self.current_supply_air_temp
-            base_cooling_energy = mass_flow * SPECIFIC_HEAT * delta_t * self.cooling_valve_position
+            base_cooling_energy = (
+                mass_flow * AIR_SPECIFIC_HEAT * delta_t * self.cooling_valve_position
+            )
             
             # Adjust cooling energy based on cooling type
             if self.cooling_type == "chilled_water":
@@ -233,12 +245,12 @@ class AirHandlingUnit(BACPypesApplicationMixin):
         # Calculate heating energy (BTU/hr)
         if self.heating_valve_position > 0:
             delta_t = self.current_supply_air_temp - self.outdoor_temp
-            self.heating_energy = mass_flow * SPECIFIC_HEAT * delta_t * self.heating_valve_position
+            self.heating_energy = mass_flow * AIR_SPECIFIC_HEAT * delta_t * self.heating_valve_position
         else:
             self.heating_energy = 0
-        
+
         # Calculate fan energy (BTU/hr)
-        self.fan_energy = self.calculate_fan_power() * 3412  # kW to BTU/hr
+        self.fan_energy = self.calculate_fan_power() * BTU_PER_KWH  # kW to BTU/hr
     
     def calculate_fan_power(self):
         """
@@ -283,8 +295,8 @@ class AirHandlingUnit(BACPypesApplicationMixin):
             return 0
         
         # Standard formula for chilled water flow
-        # Flow (GPM) = Cooling load (BTU/hr) / (500 × ΔT)
-        flow_rate = self.cooling_energy / (500 * self.chilled_water_delta_t)
+        # Flow (GPM) = Cooling load (BTU/hr) / (WATER_HEAT_CONSTANT × ΔT)
+        flow_rate = self.cooling_energy / (WATER_HEAT_CONSTANT * self.chilled_water_delta_t)
         
         # Apply valve position as a throttling factor
         flow_rate *= self.cooling_valve_position

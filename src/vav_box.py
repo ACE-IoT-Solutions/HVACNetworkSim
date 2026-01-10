@@ -1,8 +1,22 @@
 import math
 import asyncio
+import logging
 import random
+from typing import Dict, Any, Optional, Tuple
 
 from src.base_equip import BACPypesApplicationMixin
+from src.core.constants import (
+    AIR_DENSITY,
+    AIR_SPECIFIC_HEAT,
+    DEFAULT_PID_KP,
+    DEFAULT_PID_KI,
+    DEFAULT_PID_KD,
+    DEFAULT_ZONE_DEADBAND,
+    DEFAULT_ZONE_TEMP,
+    DEFAULT_SUPPLY_AIR_TEMP,
+)
+
+logger = logging.getLogger(__name__)
 
 class PIDController:
     """Enhanced PID controller implementation with anti-windup and improved performance."""
@@ -331,21 +345,17 @@ class VAVBox(BACPypesApplicationMixin):
 
         return discharge_temp
 
-    def _calculate_internal_energy(self):
+    def _calculate_internal_energy(self) -> None:
         """Calculate and accumulate energy usage based on current operation."""
-        # Constants for energy calculations
-        AIR_DENSITY = 0.075  # lb/ft³
-        SPECIFIC_HEAT = 0.24  # BTU/lb·°F
-
-        # Calculate air mass flow (lb/hr)
-        mass_flow = self.current_airflow * 60 * AIR_DENSITY  # CFM → ft³/hr → lb/hr
+        # Calculate air mass flow (lb/hr): CFM × 60 min/hr × density
+        mass_flow = self.current_airflow * 60 * AIR_DENSITY
 
         # Calculate cooling energy (BTU/hr)
         if self.mode == "cooling":
             # Q = m * Cp * ΔT
             # In cooling, we're removing heat from the zone
             delta_t = self.zone_temp - self.supply_air_temp
-            self.cooling_energy = mass_flow * SPECIFIC_HEAT * delta_t
+            self.cooling_energy = mass_flow * AIR_SPECIFIC_HEAT * delta_t
         else:
             self.cooling_energy = 0
 
@@ -354,8 +364,9 @@ class VAVBox(BACPypesApplicationMixin):
             # Q = m * Cp * ΔT
             # In heating, we're adding heat via reheat coil
             delta_t = self.get_discharge_air_temp() - self.supply_air_temp
-            self.heating_energy = mass_flow * SPECIFIC_HEAT * \
-                delta_t * self.reheat_valve_position
+            self.heating_energy = (
+                mass_flow * AIR_SPECIFIC_HEAT * delta_t * self.reheat_valve_position
+            )
         else:
             self.heating_energy = 0
 

@@ -1,6 +1,10 @@
+import logging
 import math
 
 from .base_equip import BACPypesApplicationMixin
+
+logger = logging.getLogger(__name__)
+
 
 class CoolingTower(BACPypesApplicationMixin):
     """
@@ -52,8 +56,9 @@ class CoolingTower(BACPypesApplicationMixin):
 
 
     @property
-    def current_range(self):
-        self.entering_water_temp - self.leaving_water_temp
+    def current_range(self) -> float:
+        """Temperature difference between entering and leaving water (°F)."""
+        return self.entering_water_temp - self.leaving_water_temp
     
     @property
     def outdoor_wet_bulb(self):

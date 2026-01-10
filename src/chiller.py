@@ -1,4 +1,14 @@
+import logging
+
 from .base_equip import BACPypesApplicationMixin
+from src.core.constants import (
+    BTU_PER_TON_HR,
+    KW_PER_TON,
+    WATER_HEAT_CONSTANT,
+)
+
+logger = logging.getLogger(__name__)
+
 
 class Chiller(BACPypesApplicationMixin):
     """
@@ -140,8 +150,8 @@ class Chiller(BACPypesApplicationMixin):
         if self.current_load == 0 or self.current_cop == 0:
             return 0
             
-        # Power (kW) = Cooling Load (tons) * 3.517 (kW/ton) / COP
-        power_kw = (self.current_load * 3.517) / self.current_cop
+        # Power (kW) = Cooling Load (tons) * KW_PER_TON / COP
+        power_kw = (self.current_load * KW_PER_TON) / self.current_cop
         
         return power_kw
     
@@ -198,11 +208,10 @@ class Chiller(BACPypesApplicationMixin):
         """Calculate chilled water temperature differential based on load and flow."""
         if self.chilled_water_flow <= 0:
             return 0
-            
-        # ΔT = Q / (500 * GPM)
-        # Q in BTU/hr (12,000 BTU/hr per ton)
-        # 500 is a constant (specific heat * density * 60min/hr)
-        delta_t = (load * 12000) / (500 * self.chilled_water_flow)
+
+        # ΔT = Q / (WATER_HEAT_CONSTANT * GPM)
+        # Q in BTU/hr (BTU_PER_TON_HR per ton)
+        delta_t = (load * BTU_PER_TON_HR) / (WATER_HEAT_CONSTANT * self.chilled_water_flow)
         
         return delta_t
     
@@ -219,9 +228,9 @@ class Chiller(BACPypesApplicationMixin):
             heat_rejection = self.current_load * (1 + 1/self.design_cop)
         
         # Calculate temperature rise
-        # ΔT = Q / (500 * GPM)
-        # Q in BTU/hr (12,000 BTU/hr per ton of heat rejection)
-        delta_t = (heat_rejection * 12000) / (500 * self.condenser_water_flow)
+        # ΔT = Q / (WATER_HEAT_CONSTANT * GPM)
+        # Q in BTU/hr (BTU_PER_TON_HR per ton of heat rejection)
+        delta_t = (heat_rejection * BTU_PER_TON_HR) / (WATER_HEAT_CONSTANT * self.condenser_water_flow)
         
         return delta_t
     
@@ -478,4 +487,4 @@ class Chiller(BACPypesApplicationMixin):
                 f"LCWT={self.leaving_chilled_water_temp:.1f}°F, "
                 f"ECT={self.entering_condenser_temp:.1f}°F, "
                 f"COP={self.current_cop:.2f}, "
-                f"Power={(self.current_load * 3.517) / max(0.1, self.current_cop):.1f} kW")
+                f"Power={(self.current_load * KW_PER_TON) / max(0.1, self.current_cop):.1f} kW")

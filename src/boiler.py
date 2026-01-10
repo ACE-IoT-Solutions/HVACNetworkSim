@@ -1,4 +1,15 @@
+import logging
+
 from .base_equip import BACPypesApplicationMixin
+from src.core.constants import (
+    WATER_HEAT_CONSTANT,
+    BTU_PER_KWH,
+    NATURAL_GAS_BTU_PER_CF,
+    CONDENSING_THRESHOLD_TEMP,
+)
+
+logger = logging.getLogger(__name__)
+
 
 class Boiler(BACPypesApplicationMixin):
     """
@@ -128,9 +139,9 @@ class Boiler(BACPypesApplicationMixin):
             # Gas consumption in therms per hour
             # 1 therm = 100,000 BTU, so MBH / 100 = therms/hr
             therms_per_hour = self.current_load / (self.current_efficiency * 100)
-            
-            # Convert to cubic feet of natural gas (approx. 1030 BTU/cf)
-            cubic_feet_per_hour = therms_per_hour * 100000 / 1030
+
+            # Convert to cubic feet of natural gas
+            cubic_feet_per_hour = therms_per_hour * 100000 / NATURAL_GAS_BTU_PER_CF
             
             return {
                 "therms_per_hour": therms_per_hour,
@@ -138,8 +149,8 @@ class Boiler(BACPypesApplicationMixin):
             }
         else:  # electric
             # Electric consumption in kWh
-            # 1 kW = 3412 BTU/hr, so MBH / 3.412 = kW
-            kilowatt_hours = self.current_load / (self.current_efficiency * 3.412)
+            # Convert MBH to kW: 1 kW = BTU_PER_KWH BTU/hr
+            kilowatt_hours = self.current_load * 1000 / (self.current_efficiency * BTU_PER_KWH)
             
             return {"kilowatt_hours": kilowatt_hours}
     
@@ -180,7 +191,7 @@ class Boiler(BACPypesApplicationMixin):
         """Calculate performance at current conditions."""
         # Calculate leaving hot water temperature based on load and flow
         if self.hot_water_flow > 0:
-            delta_t = (load * 1000) / (500 * self.hot_water_flow)
+            delta_t = (load * 1000) / (WATER_HEAT_CONSTANT * self.hot_water_flow)
             
             # If load exceeds capacity, may not reach setpoint
             target_lwt = self.entering_water_temp + delta_t
@@ -218,10 +229,10 @@ class Boiler(BACPypesApplicationMixin):
             # Adjust for return water temperature (for condensing boilers)
             if self.condensing:
                 # Condensing boilers have higher efficiency with lower return temps
-                # Below ~130°F return temp allows condensing
-                if self.entering_water_temp < 130:
+                # Below condensing threshold return temp allows condensing
+                if self.entering_water_temp < CONDENSING_THRESHOLD_TEMP:
                     # Bonus efficiency for condensing operation
-                    condensing_bonus = 0.1 * (130 - self.entering_water_temp) / 30
+                    condensing_bonus = 0.1 * (CONDENSING_THRESHOLD_TEMP - self.entering_water_temp) / 30
                     condensing_factor = 1.0 + min(0.15, condensing_bonus)  # Cap at 15% bonus
                 else:
                     condensing_factor = 1.0

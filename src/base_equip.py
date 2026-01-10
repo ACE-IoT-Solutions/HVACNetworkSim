@@ -1,8 +1,16 @@
-import traceback
 import asyncio
-from bacpypes3.app import Application
+import logging
+from typing import Any, Dict, Optional
 
-from bacpypes3.object import AnalogValueObject, BinaryValueObject, MultiStateValueObject, CharacterStringValueObject
+from bacpypes3.app import Application
+from bacpypes3.object import (
+    AnalogValueObject,
+    BinaryValueObject,
+    MultiStateValueObject,
+    CharacterStringValueObject,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def hex_to_padded_octets(hex_string):
@@ -97,19 +105,25 @@ class BACPypesApplicationMixin():
                         if hasattr(obj, "presentValue") and obj.presentValue != value:
                             obj.presentValue = value
                             update_count += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(
+                            "Could not directly assign value to %s: %s",
+                            point_name, e
+                        )
                 except Exception as e:
-                    print(
-                        f"Error updating point {getattr(obj, 'objectName', 'unknown')}: {e}")
+                    logger.warning(
+                        "Error updating point %s: %s",
+                        getattr(obj, 'objectName', 'unknown'), e
+                    )
 
             # Only log if we actually updated something, to reduce console spam
             if update_count > 0:
-                print(
-                    f"Updated {update_count} BACnet points for {self.name}")
+                logger.debug(
+                    "Updated %d BACnet points for %s", update_count, self.name
+                )
 
         except Exception as e:
-            print(f"Error updating BACnet device: {e}")
+            logger.error("Error updating BACnet device %s: %s", self.name, e)
 
         # Add a small delay to avoid overwhelming the BACnet stack
         await asyncio.sleep(0.05)
@@ -147,15 +161,22 @@ class BACPypesApplicationMixin():
         use_vlan_mode = network_interface_name is not None
 
         if use_ip_mode:
-            print(f"Creating {device_name} with ID {device_id} on IP {ip_address}")
+            logger.info(
+                "Creating %s with ID %d on IP %s", device_name, device_id, ip_address
+            )
         elif use_vlan_mode:
-            print(f"Creating {device_name} with ID {device_id} on VLAN {network_interface_name}")
+            logger.info(
+                "Creating %s with ID %d on VLAN %s",
+                device_name, device_id, network_interface_name
+            )
         else:
             # Default to VLAN mode for backwards compatibility with tests
             network_interface_name = "vlan"
             mac_address = "0x01" if mac_address is None else mac_address
             use_vlan_mode = True
-            print(f"Creating {device_name} with ID {device_id} on default VLAN")
+            logger.info(
+                "Creating %s with ID %d on default VLAN", device_name, device_id
+            )
 
         # Create JSON-compatible configuration list for the application
         app_config = [
@@ -225,8 +246,7 @@ class BACPypesApplicationMixin():
             if app and device_name:
                 setattr(app, 'name', device_name)
         except Exception as e:
-            print(f"Error creating BACnet device: {e}")
-            print(traceback.format_exc())
+            logger.exception("Error creating BACnet device %s: %s", device_name, e)
             return None
 
         # Add data points to the application config
