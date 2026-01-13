@@ -67,6 +67,7 @@ class BACnetNetworkManager:
     - Each AHU and its terminal units (networks 100, 200, 300, ...)
     """
 
+    BACNET_IP_NETWORK = 65534  # External BACnet/IP network number (high number to avoid conflicts)
     CENTRAL_PLANT_NETWORK = 1
     AHU_NETWORK_BASE = 100  # AHU networks start at 100, 200, 300, etc.
 
@@ -228,7 +229,7 @@ class BACnetNetworkManager:
                 "ip-subnet-mask": subnet_mask,
                 "link-speed": 0.0,
                 "mac-address": f"{ip_addr}:{bacnet_port}",
-                "network-number": 0,  # External network (network 0 = directly connected)
+                "network-number": self.BACNET_IP_NETWORK,  # External BACnet/IP network
                 "network-number-quality": "configured",
                 "network-type": "ipv4",
                 "object-identifier": "network-port,1",
@@ -239,6 +240,8 @@ class BACnetNetworkManager:
                 "reliability": "no-fault-detected",
             },
         ]
+
+        logger.info(f"    Port 1: BACnet/IP (Network {self.BACNET_IP_NETWORK})")
 
         # Add a virtual network port for each internal network
         port_id = 2
