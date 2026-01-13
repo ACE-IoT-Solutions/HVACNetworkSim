@@ -1,237 +1,254 @@
 # HVAC Network Simulation
 
-This project simulates HVAC components, including VAV boxes, Air Handling Units (AHUs), and complete buildings.
+A building HVAC simulation system that models realistic equipment behavior and exposes data via BACnet/IP. This enables testing of building automation systems, energy management software, and BACnet client applications without requiring physical equipment.
+
+## Quick Start with Podman/Docker
+
+The recommended way to run the simulation is using containers:
+
+```bash
+# Build the container image
+podman build -t hvac-simulator .
+
+# Run the simulation (BACnet on port 47808)
+podman run --rm -p 47808:47808/udp hvac-simulator
+
+# Run with custom settings
+podman run --rm -p 47808:47808/udp \
+  -e BACNET_DEVICE_ID=1000 \
+  -e SIMULATION_MODE=simple \
+  hvac-simulator
+```
+
+### Container Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACNET_IP` | auto-detected | BACnet device IP address |
+| `BACNET_SUBNET` | 16 | Subnet mask bits (e.g., 16 = /16) |
+| `BACNET_PORT` | 47808 | BACnet UDP port |
+| `BACNET_DEVICE_ID` | 599 | BACnet device instance ID |
+| `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
+| `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
+| `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode) |
+
+### Running with Custom Brick Models
+
+```bash
+# Mount your Brick TTL files and run brick-based simulation
+podman run --rm -p 47808:47808/udp \
+  -v /path/to/your/models:/app/brick_schemas:ro \
+  -e SIMULATION_MODE=brick \
+  -e BRICK_TTL_FILE=/app/brick_schemas/building.ttl \
+  hvac-simulator
+```
+
+### Running Custom Scripts
+
+```bash
+# Run a custom simulation script
+podman run --rm -p 47808:47808/udp \
+  -v /path/to/scripts:/app/custom:ro \
+  -e SIMULATION_MODE=custom \
+  -e CUSTOM_SCRIPT=/app/custom/my_simulation.py \
+  hvac-simulator
+```
+
+## Local Development
+
+For development, you can run directly with `uv`:
+
+```bash
+# Install dependencies
+uv sync
+
+# Run tests
+uv run pytest
+
+# Run a simple example
+uv run python examples/simple_vav.py
+
+# Run the full building example
+uv run python examples/complete_building.py
+
+# Run the main BACnet simulation
+uv run python src/main.py
+```
 
 ## Components
+
+### Terminal Equipment
 
 - **VAV Box**: Variable Air Volume terminal unit with optional reheat capability
   - Modulates airflow in cooling mode
   - Controls reheat valve in heating mode
   - Maintains minimum airflow in deadband mode
-  - Calculates energy usage
   - Models thermal behavior with occupancy and solar heat gain
-  - Supports time-of-day simulation
 
-- **Air Handling Unit (AHU)**: Central unit that supplies conditioned air to multiple VAV boxes
+### Air-Side Equipment
+
+- **Air Handling Unit (AHU)**: Central unit supplying conditioned air to VAV boxes
   - Controls supply air temperature
   - Coordinates multiple VAV boxes
-  - Manages cooling and heating coil valve positions
-  - Calculates total system energy usage
-  - Optional supply air temperature reset for energy savings
-  - Supports both chilled water and DX (direct expansion) cooling
-  - Calculates chilled water flow rates for hydronic systems
-  - Models multi-stage compressor operation for DX systems
-  
-- **Building**: Top-level container for HVAC equipment and building-wide data
-  - Manages multiple AHUs and zones
-  - Tracks outdoor weather conditions (temperature, humidity, wind, solar)
-  - Calculates solar position based on time and location
-  - Models building-wide energy usage
-  - Generates energy reports by equipment and energy type
-  - Supports time-based simulation with weather data inputs
-  
-- **Cooling Tower**: Evaporative heat rejection for water-cooled chillers
-  - Models part-load performance based on wet bulb and load conditions
-  - Calculates approach temperature and efficiency
-  - Simulates variable-speed fan control
-  - Predicts water consumption from evaporation, drift, and blowdown
-  - Supports multiple cells with load-based staging
-  
+  - Optional supply air temperature reset
+  - Supports chilled water and DX cooling
+
+### Plant Equipment
+
 - **Chiller**: Produces chilled water for cooling coils
-  - Supports both water-cooled and air-cooled configurations
-  - Models COP and capacity based on part-load ratio and temperatures
-  - Integrates with cooling tower for water-cooled operation
-  - Calculates energy consumption based on operating conditions
-  - Allows for setpoint adjustment with efficiency impacts
-  
+  - Water-cooled and air-cooled configurations
+  - COP modeling based on load and conditions
+  - Integrates with cooling tower
+
+- **Cooling Tower**: Evaporative heat rejection for water-cooled chillers
+  - Variable-speed fan control
+  - Approach temperature modeling
+  - Multi-cell support
+
 - **Boiler**: Produces hot water for heating coils
-  - Supports both gas-fired and electric configurations
-  - Models condensing boiler efficiency variation with return water temperature
-  - Simulates realistic cycling behavior with minimum run times
-  - Calculates fuel consumption with appropriate units
-  - Provides detailed energy analysis for different operating modes
+  - Gas-fired and electric configurations
+  - Condensing boiler efficiency modeling
+  - Realistic cycling behavior
 
-## Getting Started
+### Building Container
 
-```bash
-# Run the tests
-python -m unittest discover tests
+- **Building**: Top-level container for HVAC equipment
+  - Manages multiple AHUs and zones
+  - Tracks weather conditions
+  - Calculates solar position
+  - Energy reporting
 
-# Run single VAV box simulation (requires matplotlib)
-python example_simulation.py
+## Project Structure
 
-# Run thermal simulation with solar gain and occupancy (requires matplotlib)
-python example_thermal_simulation.py
+```
+src/
+├── core/                    # Core infrastructure
+│   ├── constants.py         # Physics constants
+│   ├── config.py            # Configuration system
+│   └── logging.py           # Structured logging
+├── physics/                 # Physics calculations
+│   ├── thermal.py           # Heat transfer
+│   └── fluid.py             # Fluid dynamics
+├── controls/                # Control systems
+│   └── pid.py               # PID controller
+├── equipment/               # Equipment base classes
+│   └── base.py              # Abstract hierarchy
+├── bacnet/                  # BACnet integration
+│   ├── device.py            # Device management
+│   ├── mixin.py             # Application mixin
+│   └── points.py            # Point creation
+├── vav_box.py              # VAV terminal unit
+├── ahu.py                  # Air handling unit
+├── chiller.py              # Chiller
+├── boiler.py               # Boiler
+├── cooling_tower.py        # Cooling tower
+└── building.py             # Building container
 
-# Run AHU with multiple VAV boxes simulation (requires matplotlib)
-python example_ahu_simulation.py
+examples/
+├── simple_vav.py           # Basic VAV example
+├── complete_building.py    # Full building simulation
+└── ...                     # Additional examples
 
-# Compare chilled water and DX cooling types (requires matplotlib)
-python example_cooling_types.py
-
-# Run complete building simulation with weather data (requires matplotlib)
-python example_building_simulation.py
-
-# Run comprehensive system simulation with all equipment types (requires matplotlib)
-python example_complete_system.py
-
-# Run BACnet integration with accelerated VAV simulation (requires BAC0)
-python example_bacnet_simulation.py
+tests/
+├── test_*.py               # Unit tests
+├── integration/            # Integration tests
+└── performance/            # Performance benchmarks
 ```
 
-## Features
+## Configuration
 
-- Realistic PID control for damper and reheat valve modulation
-- Deadband operation to prevent short cycling
-- Energy usage calculation for all system components
-- Supply air temperature reset based on zone demands
-- Dynamic thermal modeling of zone temperatures
-- Support for both heating and cooling modes
-- Time-of-day based solar heat gain calculation
-- Occupancy-based thermal load modeling
-- Window orientation effects on zone temperature
-- Thermal mass and building envelope heat transfer
-- Multiple cooling system types:
-  - Chilled water systems with valve modulation and flow calculation
-  - DX (direct expansion) systems with multi-stage compressor control
-  - Different efficiency models based on system type and conditions
-- Central plant equipment:
-  - Cooling towers with variable-speed fans and approach temperature modeling
-  - Chillers with performance curves and condenser temperature effects
-  - Boilers with condensing operation and fuel consumption tracking
-  - Primary/secondary equipment integration (chiller + cooling tower)
-- Whole-building simulation capabilities:
-  - Integration of multiple HVAC systems 
-  - Building-level energy analysis and reporting
-  - Weather data processing
-  - Solar position calculation based on time and location
-  - Time-based simulation with variable conditions
+Equipment can be configured via YAML files or dataclasses:
 
-## Example Simulations
+```yaml
+# config.yaml
+simulation:
+  time_step_minutes: 1
+  speed_multiplier: 60
 
-### Single VAV Box Simulation
+bacnet:
+  port: 47808
+  device_id_base: 1000
 
-The `example_simulation.py` script demonstrates a single VAV box behavior over a 24-hour period with:
+defaults:
+  vav:
+    min_airflow: 100
+    max_airflow: 1000
+    zone_temp_setpoint: 72
+```
 
-- Varying zone temperature based on time of day
-- Automatic mode switching between heating, cooling, and deadband
-- Visualization of temperatures, airflow, valve positions, and energy usage
-- Color-coded operating modes
+```python
+from src.core.config import VAVConfig, ThermalZoneConfig
+from src.vav_box import VAVBox
 
-### Thermal Simulation with Solar and Occupancy
-
-The `example_thermal_simulation.py` script demonstrates thermal behavior of VAV zones with:
-
-- East-facing and west-facing office zones for comparison
-- Time-of-day effects on solar heat gain through windows
-- Scheduled occupancy with appropriate heat gain from people
-- Building envelope heat transfer based on outdoor temperatures
-- Detailed thermal modeling showing how zones respond differently throughout the day
-- Comparison of HVAC system response to different solar load profiles
-
-### AHU Simulation
-
-The `example_ahu_simulation.py` script demonstrates an AHU controlling multiple VAV boxes:
-
-- Models a small building with office, conference room, and lobby zones
-- Realistic occupancy patterns for each zone
-- Dynamic thermal model accounting for outdoor conditions and internal loads
-- Visualization of all zone temperatures, airflows, and system energy usage
-- Supply air temperature reset based on zone demands
-
-### Cooling Types Comparison
-
-The `example_cooling_types.py` script compares different cooling system types:
-
-- Side-by-side comparison of chilled water and DX cooling performance
-- Response to varying outdoor temperatures and cooling loads
-- Chilled water flow rate calculation based on cooling demand
-- DX compressor staging based on load requirements
-- Energy efficiency differences between system types
-- Impact of outdoor temperature on system performance
-
-### Complete Building Simulation
-
-The `example_building_simulation.py` script demonstrates a whole-building simulation:
-
-- Models a complete 2-story office building with multiple HVAC systems
-- 5 thermal zones with different setpoints and orientations
-- Mixed equipment types (chilled water and DX cooling systems)
-- 24-hour simulation with realistic weather data
-- Solar position calculation based on time, date, and location
-- Comprehensive energy reporting and visualization
-- Analysis of energy consumption by equipment type and category
-
-### Comprehensive System Simulation
-
-The `example_complete_system.py` script demonstrates a complete HVAC system with all equipment types:
-
-- Models a mixed-use 4-story building with multiple HVAC systems
-- Includes 14 zones across different space types (office, retail, conference, lobby)
-- Multiple AHUs with both chilled water and DX cooling
-- Diverse central plant equipment:
-  - Water-cooled and air-cooled chillers
-  - Cooling towers with variable-speed fans
-  - Gas-fired condensing and electric boilers
-- Load distribution between parallel equipment
-- Performance monitoring of all system components
-- Analysis of efficiency under varying conditions
-- Detailed visualization of key performance metrics
-
-### BACnet Integration Simulation
-
-The `example_bacnet_simulation.py` script demonstrates BACnet integration with our HVAC simulation:
-
-- Creates a simulated VAV box with realistic behavior
-- Automatically generates BACnet points from process variable metadata
-- Maps Python data types to appropriate BACnet object types
-- Establishes a BAC0.lite() network for BACnet/IP communication
-- Runs an accelerated simulation (1 hour per minute) with dynamic behavior
-- Continuously updates BACnet points with current simulation state
-- Makes the simulated HVAC equipment discoverable by any BACnet client
-- Proper conversion of state variables (like modes) to BACnet multi-state values
-
-## Process Variables and Metadata
-
-All equipment classes in the simulation provide standardized access to their state through:
-
-1. `get_process_variables()` - Instance method that returns a dictionary of all current state variables
-2. `get_process_variables_metadata()` - Class method that returns metadata for all process variables
-
-The metadata includes:
-- Type information (float, int, bool, str, etc.)
-- Human-readable labels
-- Detailed descriptions
-- Units (°F, CFM, BTU/hr, etc.)
-- Enumeration options for state variables
-
-This standardized interface enables:
-- Consistent access to equipment state across the simulation
-- Self-describing HVAC equipment models
-- Automatic BACnet point generation with appropriate data types
-- Future extension for other protocols and interfaces
+config = VAVConfig(
+    name="VAV-101",
+    min_airflow=100,
+    max_airflow=800,
+    thermal_zone=ThermalZoneConfig(
+        zone_area=400,
+        window_orientation="east"
+    )
+)
+vav = VAVBox.from_config(config)
+```
 
 ## BACnet Integration
 
-The simulation framework includes BACnet integration using the BAC0 library. To use this feature:
+The simulation exposes all equipment as BACnet devices:
 
-1. Install BAC0:
-   ```bash
-   pip install BAC0
-   ```
+- Each equipment instance gets a unique BACnet device ID
+- Process variables are mapped to BACnet objects:
+  - Temperatures → Analog Input (AI)
+  - Setpoints → Analog Value (AV)
+  - Status → Binary Value (BV)
+  - Modes → Multi-State Value (MSV)
 
-2. Run the BACnet integration example:
-   ```bash
-   python example_bacnet_simulation.py
-   ```
+### Discovering Simulated Devices
 
-You can then use any BACnet client to discover and interact with the simulated HVAC equipment, including:
-- BAC0's built-in script functionality
-- Yabe (Yet Another BACnet Explorer)
-- Proprietary BMS systems with BACnet/IP discovery
+Use any BACnet client to discover the simulated equipment:
+- BAC0 Python library
+- YABE (Yet Another BACnet Explorer)
+- Proprietary BMS systems with BACnet/IP
 
-The BACnet integration enables:
-- Testing BACnet interfaces without physical equipment
-- Developing and debugging BACnet applications
-- Creating hybrid systems with real and simulated equipment
-- Training purposes for building automation
+## Testing
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with verbose output
+uv run pytest -v
+
+# Run specific test category
+uv run pytest tests/integration/
+uv run pytest tests/performance/
+
+# Run with coverage
+uv run pytest --cov=src
+```
+
+## Documentation
+
+- [Architecture Guide](docs/architecture.md) - System design and physics models
+- [Examples README](examples/README.md) - Example script documentation
+
+## Features
+
+- Realistic PID control for damper and valve modulation
+- Dynamic thermal modeling with solar gains and occupancy
+- Multiple cooling system types (chilled water, DX)
+- Central plant equipment with performance curves
+- Standardized process variable interface
+- Automatic BACnet point generation
+- Configuration via YAML or Python dataclasses
+- Comprehensive test suite with performance benchmarks
+
+## Requirements
+
+- Python 3.12+
+- Dependencies managed via `uv` (see `pyproject.toml`)
+- Podman or Docker for containerized deployment
+
+## License
+
+See LICENSE file for details.
