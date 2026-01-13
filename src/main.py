@@ -187,12 +187,11 @@ async def run_brick_simulation():
         logger.error("Install with: pip install rdflib")
         sys.exit(1)
 
-    # Import the BrickParser from the examples
-    sys.path.insert(0, "/app")
+    # Import the BrickParser
     try:
-        from examples.brick_based_simulation import BrickParser
+        from src.brick.parser import BrickParser
     except ImportError as e:
-        logger.error(f"Failed to import brick_based_simulation: {e}")
+        logger.error(f"Failed to import BrickParser: {e}")
         sys.exit(1)
 
     # Parse the Brick schema
@@ -309,14 +308,21 @@ async def run_brick_simulation():
 
     if central_plant_network:
         # Add boilers
-        boilers_data = building_structure.get("boilers", [])
+        boilers_data = building_structure.get("boilers", {})
         if boilers_data:
             logger.info("\nCreating central plant equipment:")
             for boiler_name in boilers_data:
                 boiler = Boiler(
                     name=boiler_name if isinstance(boiler_name, str) else "Boiler-1",
-                    capacity=1000000,  # BTU/hr
-                    efficiency=0.85,
+                    fuel_type="gas",
+                    capacity=1000,  # MBH
+                    design_efficiency=0.85,
+                    design_entering_water_temp=160,
+                    design_leaving_water_temp=180,
+                    min_part_load_ratio=0.2,
+                    design_hot_water_flow=100,
+                    condensing=True,
+                    turndown_ratio=5.0,
                 )
                 network_manager.add_device_to_network(
                     equipment=boiler,
@@ -325,12 +331,18 @@ async def run_brick_simulation():
                 )
 
         # Add chillers
-        chillers_data = building_structure.get("chillers", [])
+        chillers_data = building_structure.get("chillers", {})
         for chiller_name in chillers_data:
             chiller = Chiller(
                 name=chiller_name if isinstance(chiller_name, str) else "Chiller-1",
+                cooling_type="water_cooled",
                 capacity=500,  # tons
-                efficiency=0.6,  # kW/ton
+                design_cop=5.0,
+                design_entering_condenser_temp=85,
+                design_leaving_chilled_water_temp=44,
+                min_part_load_ratio=0.1,
+                design_chilled_water_flow=1000,
+                design_condenser_water_flow=1200,
             )
             network_manager.add_device_to_network(
                 equipment=chiller,
