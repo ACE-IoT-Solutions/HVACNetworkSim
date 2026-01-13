@@ -217,6 +217,24 @@ async def run_brick_simulation():
     logger.info("\nCreating routed BACnet network topology...")
     network_manager = create_building_networks_from_brick(building_structure)
 
+    # Get BACnet address for the router
+    bacnet_address = get_bacnet_address()
+    bacnet_port = int(os.getenv("BACNET_PORT", "47808"))
+
+    # Create the IP-to-VLAN router to bridge external traffic to internal VLANs
+    logger.info("\nCreating IP-to-VLAN router...")
+    router = network_manager.create_ip_to_vlan_router(
+        ip_address=bacnet_address,
+        bacnet_port=bacnet_port,
+        device_id=999,
+        device_name="HVAC-Building-Router",
+    )
+
+    if not router:
+        logger.error("Failed to create router, BACnet/IP will not be accessible externally")
+    else:
+        logger.info(f"Router created, BACnet/IP accessible on {bacnet_address}:{bacnet_port}")
+
     # Storage for simulation objects
     all_vavs: Dict[str, VAVBox] = {}
     all_ahus: Dict[str, AirHandlingUnit] = {}

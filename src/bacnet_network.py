@@ -5,16 +5,17 @@ BACnet Network Manager for realistic building network topology.
 This module creates a routed BACnet network architecture that mirrors real buildings:
 - Each AHU has its own network with its terminal units (VAVs)
 - Central plant equipment (chillers, boilers, cooling towers) on a separate network
-- A BACnet router connects all networks for inter-network communication
+- A BACnet IP-to-VLAN router connects all networks for inter-network communication
 
 Network Topology:
-    [Central Plant Network - Net 1]
+    [External BACnet/IP Network - Port 47808]
         |
-        +-- Chiller(s)
-        +-- Boiler(s)
-        +-- Cooling Tower(s)
+    [BACnet Router (IP-to-VLAN Bridge)]
         |
-    [BACnet Router]
+        +-- [Central Plant Network - Net 1]
+        |       +-- Chiller(s)
+        |       +-- Boiler(s)
+        |       +-- Cooling Tower(s)
         |
         +-- [AHU-1 Network - Net 100]
         |       +-- AHU-1
@@ -29,8 +30,11 @@ Network Topology:
                 +-- VAV-N-1, VAV-N-2, ...
 """
 
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 try:
     from bacpypes3.vlan import VirtualNetwork
@@ -78,9 +82,13 @@ class BACnetNetworkManager:
         self._next_mac_counter: Dict[int, int] = {}  # Per-network MAC counter
 
     def _get_next_mac(self, network_number: int) -> str:
-        """Get the next available MAC address for a network."""
+        """Get the next available MAC address for a network.
+
+        MAC address 0x01 is reserved for the router on each network.
+        Device MAC addresses start at 0x02.
+        """
         if network_number not in self._next_mac_counter:
-            self._next_mac_counter[network_number] = 1
+            self._next_mac_counter[network_number] = 2  # Start at 2, 1 is reserved for router
 
         mac_num = self._next_mac_counter[network_number]
         self._next_mac_counter[network_number] += 1
@@ -143,6 +151,129 @@ class BACnetNetworkManager:
 
         self.networks[network_number] = network_info
         return network_info
+
+    def create_ip_to_vlan_router(
+        self,
+        ip_address: str,
+        bacnet_port: int = 47808,
+        device_id: int = 999,
+        device_name: str = "BACnet-Router",
+    ) -> Optional[Any]:
+        """
+        Create an IP-to-VLAN router that bridges external BACnet/IP traffic
+        to the internal virtual networks.
+
+        This router has:
+        - One BACnet/IP network port bound to a real IP address (for external access)
+        - One virtual network port for each internal VLAN
+
+        Args:
+            ip_address: IP address with CIDR notation (e.g., "10.88.0.32/16")
+            bacnet_port: UDP port for BACnet/IP (default: 47808)
+            device_id: BACnet device ID for the router
+            device_name: Name for the router device
+
+        Returns:
+            The router Application, or None if failed
+        """
+        if not self.networks:
+            logger.warning("No networks created yet, cannot create router")
+            return None
+
+        # Parse IP address
+        ip_parts = ip_address.split("/")
+        ip_addr = ip_parts[0]
+        subnet_bits = int(ip_parts[1]) if len(ip_parts) > 1 else 16
+
+        # Convert subnet bits to mask
+        subnet_mask = ".".join(
+            str((0xFFFFFFFF << (32 - subnet_bits) >> (24 - 8 * i)) & 0xFF) for i in range(4)
+        )
+
+        logger.info(f"Creating IP-to-VLAN router: {device_name}")
+        logger.info(f"  IP Address: {ip_addr}")
+        logger.info(f"  Subnet Mask: {subnet_mask}")
+        logger.info(f"  BACnet Port: {bacnet_port}")
+        logger.info(f"  Connected VLANs: {len(self.networks)}")
+
+        # Build the router configuration
+        router_config = [
+            # Device object
+            {
+                "apdu-segment-timeout": 1000,
+                "apdu-timeout": 3000,
+                "application-software-version": "1.0",
+                "database-revision": 1,
+                "firmware-revision": "1.0",
+                "max-apdu-length-accepted": 1024,
+                "model-name": "HVAC-Network-Router",
+                "number-of-apdu-retries": 3,
+                "object-identifier": f"device,{device_id}",
+                "object-name": device_name,
+                "object-type": "device",
+                "protocol-revision": 22,
+                "protocol-version": 1,
+                "segmentation-supported": "segmented-both",
+                "system-status": "operational",
+                "vendor-identifier": 999,
+                "vendor-name": "ACEHVACNetwork",
+                "description": "IP-to-VLAN Router for HVAC Simulation",
+            },
+            # BACnet/IP network port (external access)
+            {
+                "bacnet-ip-mode": "normal",
+                "bacnet-ip-udp-port": bacnet_port,
+                "changes-pending": False,
+                "ip-address": ip_addr,
+                "ip-subnet-mask": subnet_mask,
+                "link-speed": 0.0,
+                "mac-address": f"{ip_addr}:{bacnet_port}",
+                "network-number": 0,  # External network (network 0 = directly connected)
+                "network-number-quality": "configured",
+                "network-type": "ipv4",
+                "object-identifier": "network-port,1",
+                "object-name": "BACnet-IP-Port",
+                "object-type": "network-port",
+                "out-of-service": False,
+                "protocol-level": "bacnet-application",
+                "reliability": "no-fault-detected",
+            },
+        ]
+
+        # Add a virtual network port for each internal network
+        port_id = 2
+        for network_number, network_info in sorted(self.networks.items()):
+            router_config.append(
+                {
+                    "changes-pending": False,
+                    "mac-address": "0x01",  # Router is always MAC 0x01 on each VLAN
+                    "network-interface-name": network_info.name,
+                    "network-number": network_number,
+                    "network-number-quality": "configured",
+                    "network-type": "virtual",
+                    "object-identifier": f"network-port,{port_id}",
+                    "object-name": f"VLAN-{network_info.name}",
+                    "object-type": "network-port",
+                    "out-of-service": False,
+                    "protocol-level": "bacnet-application",
+                    "reliability": "no-fault-detected",
+                }
+            )
+            logger.info(f"    Port {port_id}: {network_info.name} (Network {network_number})")
+            port_id += 1
+
+        try:
+            # Create the router application
+            router_app = Application.from_json(router_config)
+            router_app.name = device_name
+            self.router_app = router_app
+
+            logger.info(f"Router created with {port_id - 1} network ports")
+            return router_app
+
+        except Exception as e:
+            logger.exception(f"Error creating router: {e}")
+            return None
 
     def add_device_to_network(
         self,
