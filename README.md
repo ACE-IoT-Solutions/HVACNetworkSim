@@ -2,21 +2,76 @@
 
 A building HVAC simulation system that models realistic equipment behavior and exposes data via BACnet/IP. This enables testing of building automation systems, energy management software, and BACnet client applications without requiring physical equipment.
 
-## Quick Start with Podman/Docker
+## Quick Start
 
-The recommended way to run the simulation is using containers:
+The easiest way to run the simulation is with the `hvac-sim` CLI, which handles container setup automatically:
+
+```bash
+# Run simple VAV simulation
+./hvac-sim
+
+# Run with a Brick schema file
+./hvac-sim bldg36.ttl
+
+# List available Brick schema files
+./hvac-sim --list
+```
+
+The CLI auto-detects Podman or Docker, builds the image if needed, and sets up all the correct volume mappings and environment variables.
+
+### CLI Options
+
+```bash
+./hvac-sim [OPTIONS] [BRICK_FILE]
+
+Options:
+  -l, --list            List available Brick schema files
+  -d, --detach          Run in background
+  --device-id ID        BACnet device instance ID (default: 599)
+  -p, --port PORT       Host port for BACnet UDP (default: 47808)
+  --network MODE        Container network mode (e.g., 'host')
+  --build               Force rebuild the container image
+  --stop                Stop the running simulation
+  --logs                Show logs from the container
+  -e KEY=VALUE          Set additional environment variables
+```
+
+### Examples
+
+```bash
+# Run with a specific Brick file
+./hvac-sim bldg36.ttl
+
+# Run with custom device ID and port
+./hvac-sim --device-id 1000 --port 47809 bldg36.ttl
+
+# Run in background and view logs
+./hvac-sim -d bldg36.ttl
+./hvac-sim --logs
+
+# Use host networking for BACnet discovery
+./hvac-sim --network host bldg36.ttl
+
+# Stop the running simulation
+./hvac-sim --stop
+```
+
+## Manual Container Commands
+
+For more control, you can run the container directly:
 
 ```bash
 # Build the container image
 podman build -t hvac-simulator .
 
-# Run the simulation (BACnet on port 47808)
-podman run --rm -p 47808:47808/udp hvac-simulator
+# Run simple simulation
+podman run --rm -it -p 47808:47808/udp hvac-simulator
 
-# Run with custom settings
-podman run --rm -p 47808:47808/udp \
-  -e BACNET_DEVICE_ID=1000 \
-  -e SIMULATION_MODE=simple \
+# Run with Brick schema
+podman run --rm -it -p 47808:47808/udp \
+  -v ./data/brick_schemas:/app/brick_schemas:ro \
+  -e SIMULATION_MODE=brick \
+  -e BRICK_TTL_FILE=/app/brick_schemas/bldg36.ttl \
   hvac-simulator
 ```
 
@@ -31,28 +86,6 @@ podman run --rm -p 47808:47808/udp \
 | `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
 | `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode) |
-
-### Running with Custom Brick Models
-
-```bash
-# Mount your Brick TTL files and run brick-based simulation
-podman run --rm -p 47808:47808/udp \
-  -v /path/to/your/models:/app/brick_schemas:ro \
-  -e SIMULATION_MODE=brick \
-  -e BRICK_TTL_FILE=/app/brick_schemas/building.ttl \
-  hvac-simulator
-```
-
-### Running Custom Scripts
-
-```bash
-# Run a custom simulation script
-podman run --rm -p 47808:47808/udp \
-  -v /path/to/scripts:/app/custom:ro \
-  -e SIMULATION_MODE=custom \
-  -e CUSTOM_SCRIPT=/app/custom/my_simulation.py \
-  hvac-simulator
-```
 
 ## Local Development
 

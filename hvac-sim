@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""
+HVAC Simulator CLI - A simple command to run the containerized HVAC BACnet simulation.
+
+Usage:
+    # Run simple simulation
+    ./hvac-sim
+
+    # Run with a brick file
+    ./hvac-sim data/brick_schemas/bldg36.ttl
+
+    # Run with custom device ID
+    ./hvac-sim --device-id 1000 data/brick_schemas/bldg36.ttl
+
+    # List available brick files
+    ./hvac-sim --list
+"""
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+
+# Container configuration
+IMAGE_NAME = "hvac-simulator"
+CONTAINER_NAME = "hvac-bacnet-sim"
+DEFAULT_PORT = 47808
+BRICK_MOUNT_PATH = "/app/brick_schemas"
+
+
+def find_brick_files(search_dir: Path = None) -> list[Path]:
+    """Find all .ttl brick schema files in the data directory."""
+    if search_dir is None:
+        search_dir = Path(__file__).parent / "data" / "brick_schemas"
+
+    if not search_dir.exists():
+        return []
+
+    return sorted(search_dir.glob("*.ttl"))
+
+
+def list_brick_files():
+    """List all available brick schema files."""
+    files = find_brick_files()
+
+    if not files:
+        print("No brick schema files found in data/brick_schemas/")
+        print("\nPlace your .ttl files in data/brick_schemas/ or specify a full path.")
+        return
+
+    print("Available Brick schema files:")
+    print("-" * 50)
+    for f in files:
+        size = f.stat().st_size
+        print(f"  {f.name:30} ({size:,} bytes)")
+    print("-" * 50)
+    print(f"\nUsage: ./hvac-sim {files[0].name}")
+
+
+def check_container_runtime() -> str:
+    """Check if podman or docker is available, preferring podman."""
+    for runtime in ["podman", "docker"]:
+        try:
+            result = subprocess.run(
+                [runtime, "--version"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                return runtime
+        except (subprocess.SubprocessError, FileNotFoundError):
+            continue
+
+    print("Error: Neither podman nor docker found.", file=sys.stderr)
+    print("Please install podman or docker to run the simulation.", file=sys.stderr)
+    sys.exit(1)
+
+
+def image_exists(runtime: str, image_name: str) -> bool:
+    """Check if a container image exists (works with both podman and docker)."""
+    # Use 'image inspect' which works on both podman and docker
+    result = subprocess.run(
+        [runtime, "image", "inspect", image_name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def build_image(runtime: str, force: bool = False) -> bool:
+    """Build the container image if needed."""
+    # Check if image exists
+    if not force and image_exists(runtime, IMAGE_NAME):
+        return True
+
+    print(f"Building {IMAGE_NAME} image...")
+    script_dir = Path(__file__).parent
+
+    result = subprocess.run([runtime, "build", "-t", IMAGE_NAME, str(script_dir)], cwd=script_dir)
+
+    if result.returncode != 0:
+        print("Error: Failed to build image", file=sys.stderr)
+        return False
+
+    print(f"Image {IMAGE_NAME} built successfully.")
+    return True
+
+
+def stop_existing_container(runtime: str):
+    """Stop and remove any existing container with our name."""
+    subprocess.run(
+        [runtime, "rm", "-f", CONTAINER_NAME], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
+
+def resolve_brick_file(brick_path: str) -> tuple[Path, str]:
+    """
+    Resolve a brick file path and return (host_path, container_path).
+
+    Accepts:
+    - Filename only: "bldg36.ttl" -> looks in data/brick_schemas/
+    - Relative path: "data/brick_schemas/bldg36.ttl"
+    - Absolute path: "/path/to/building.ttl"
+    """
+    brick_path = Path(brick_path)
+    script_dir = Path(__file__).parent
+
+    # If it's just a filename, look in the default brick schemas dir
+    if not brick_path.parent.name:  # Just filename
+        default_dir = script_dir / "data" / "brick_schemas"
+        full_path = default_dir / brick_path
+        if full_path.exists():
+            return full_path.resolve(), f"{BRICK_MOUNT_PATH}/{brick_path.name}"
+
+    # If relative, make absolute from script dir
+    if not brick_path.is_absolute():
+        brick_path = (script_dir / brick_path).resolve()
+    else:
+        brick_path = brick_path.resolve()
+
+    if not brick_path.exists():
+        print(f"Error: Brick file not found: {brick_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Container path is the mount point + filename
+    container_path = f"{BRICK_MOUNT_PATH}/{brick_path.name}"
+
+    return brick_path, container_path
+
+
+def run_simulation(
+    runtime: str,
+    brick_file: str = None,
+    device_id: int = None,
+    port: int = DEFAULT_PORT,
+    detach: bool = False,
+    network_mode: str = None,
+    extra_env: dict = None,
+):
+    """Run the HVAC simulation container."""
+
+    cmd = [runtime, "run"]
+
+    # Container name and cleanup
+    cmd.extend(["--name", CONTAINER_NAME])
+    if not detach:
+        cmd.append("--rm")
+
+    # Interactive/detach mode
+    if detach:
+        cmd.append("-d")
+    else:
+        cmd.extend(["-it"])
+
+    # Network configuration
+    if network_mode:
+        cmd.extend(["--network", network_mode])
+
+    # Port mapping
+    cmd.extend(["-p", f"{port}:{DEFAULT_PORT}/udp"])
+
+    # Environment variables
+    env_vars = {}
+
+    if brick_file:
+        host_path, container_path = resolve_brick_file(brick_file)
+
+        # Mount the brick file's directory
+        mount_dir = host_path.parent
+        cmd.extend(["-v", f"{mount_dir}:{BRICK_MOUNT_PATH}:ro"])
+
+        env_vars["SIMULATION_MODE"] = "brick"
+        env_vars["BRICK_TTL_FILE"] = container_path
+    else:
+        env_vars["SIMULATION_MODE"] = "simple"
+
+    if device_id:
+        env_vars["BACNET_DEVICE_ID"] = str(device_id)
+
+    # Add any extra environment variables
+    if extra_env:
+        env_vars.update(extra_env)
+
+    # Add env vars to command
+    for key, value in env_vars.items():
+        cmd.extend(["-e", f"{key}={value}"])
+
+    # Image name
+    cmd.append(IMAGE_NAME)
+
+    # Print the command for debugging/learning
+    print(f"Running: {' '.join(cmd)}")
+    print("-" * 60)
+
+    # Execute
+    try:
+        result = subprocess.run(cmd)
+        return result.returncode
+    except KeyboardInterrupt:
+        print("\nStopping simulation...")
+        stop_existing_container(runtime)
+        return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run the HVAC BACnet Simulator in a container",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                          Run simple VAV simulation
+  %(prog)s bldg36.ttl               Run with brick file from data/brick_schemas/
+  %(prog)s /path/to/building.ttl    Run with brick file from custom path
+  %(prog)s --list                   List available brick schema files
+  %(prog)s -d bldg36.ttl            Run in background (detached)
+  %(prog)s --port 47809 bldg36.ttl  Use custom BACnet port
+        """,
+    )
+
+    parser.add_argument(
+        "brick_file", nargs="?", help="Brick TTL file (filename, relative, or absolute path)"
+    )
+
+    parser.add_argument(
+        "-l", "--list", action="store_true", help="List available brick schema files"
+    )
+
+    parser.add_argument("-d", "--detach", action="store_true", help="Run container in background")
+
+    parser.add_argument(
+        "--device-id", type=int, metavar="ID", help="BACnet device instance ID (default: 599)"
+    )
+
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        metavar="PORT",
+        help=f"Host port for BACnet UDP (default: {DEFAULT_PORT})",
+    )
+
+    parser.add_argument(
+        "--network",
+        metavar="MODE",
+        help="Container network mode (e.g., 'host' for BACnet discovery)",
+    )
+
+    parser.add_argument("--build", action="store_true", help="Force rebuild the container image")
+
+    parser.add_argument("--stop", action="store_true", help="Stop the running simulation container")
+
+    parser.add_argument(
+        "--logs", action="store_true", help="Show logs from running/stopped container"
+    )
+
+    parser.add_argument(
+        "-e",
+        "--env",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Set additional environment variables",
+    )
+
+    args = parser.parse_args()
+
+    # Handle --list
+    if args.list:
+        list_brick_files()
+        return 0
+
+    # Detect container runtime
+    runtime = check_container_runtime()
+    print(f"Using container runtime: {runtime}")
+
+    # Handle --stop
+    if args.stop:
+        print(f"Stopping {CONTAINER_NAME}...")
+        stop_existing_container(runtime)
+        print("Stopped.")
+        return 0
+
+    # Handle --logs
+    if args.logs:
+        subprocess.run([runtime, "logs", "-f", CONTAINER_NAME])
+        return 0
+
+    # Build image if needed
+    if not build_image(runtime, force=args.build):
+        return 1
+
+    # Stop any existing container
+    stop_existing_container(runtime)
+
+    # Parse extra environment variables
+    extra_env = {}
+    if args.env:
+        for env_str in args.env:
+            if "=" in env_str:
+                key, value = env_str.split("=", 1)
+                extra_env[key] = value
+
+    # Run the simulation
+    return run_simulation(
+        runtime=runtime,
+        brick_file=args.brick_file,
+        device_id=args.device_id,
+        port=args.port,
+        detach=args.detach,
+        network_mode=args.network,
+        extra_env=extra_env,
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())
