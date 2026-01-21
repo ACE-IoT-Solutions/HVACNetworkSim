@@ -34,6 +34,8 @@ import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
+from src.bacnet.device import get_package_version, generate_firmware_revision
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -203,11 +205,11 @@ class BACnetNetworkManager:
             {
                 "apdu-segment-timeout": 1000,
                 "apdu-timeout": 3000,
-                "application-software-version": "1.0",
+                "application-software-version": get_package_version(),
                 "database-revision": 1,
-                "firmware-revision": "1.0",
+                "firmware-revision": generate_firmware_revision(device_name),
                 "max-apdu-length-accepted": 1024,
-                "model-name": "HVAC-Network-Router",
+                "model-name": "ACE-RTR-9000",
                 "number-of-apdu-retries": 3,
                 "object-identifier": f"device,{device_id}",
                 "object-name": device_name,

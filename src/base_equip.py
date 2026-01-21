@@ -9,6 +9,12 @@ from bacpypes3.object import (
     CharacterStringValueObject,
 )
 
+from src.bacnet.device import (
+    get_package_version,
+    generate_firmware_revision,
+    get_model_name_for_equipment,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,11 +187,11 @@ class BACPypesApplicationMixin:
             {
                 "apdu-segment-timeout": 1000,
                 "apdu-timeout": 3000,
-                "application-software-version": "1.0",
+                "application-software-version": get_package_version(),
                 "database-revision": 1,
-                "firmware-revision": "N/A",
+                "firmware-revision": generate_firmware_revision(device_name),
                 "max-apdu-length-accepted": 1024,
-                "model-name": "VAV-Simulator",
+                "model-name": get_model_name_for_equipment(self),
                 "number-of-apdu-retries": 3,
                 "object-identifier": f"device,{device_id}",
                 "object-name": device_name,
@@ -196,7 +202,7 @@ class BACPypesApplicationMixin:
                 "system-status": "operational",
                 "vendor-identifier": 999,
                 "vendor-name": "ACEHVACNetwork",
-                "description": f"Simulated VAV Box - {self.name}",
+                "description": f"Simulated Equipment - {self.name}",
             }
         ]
 
