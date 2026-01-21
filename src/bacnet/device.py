@@ -16,8 +16,10 @@ Usage:
     app = create_bacnet_device(equipment, config)
 """
 
+import hashlib
 import logging
 from dataclasses import dataclass
+from importlib.metadata import version, PackageNotFoundError
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from src.core.constants import (
@@ -49,6 +51,64 @@ def hex_to_padded_octets(hex_string: str) -> str:
     if len(hex_string) % 2 != 0:
         hex_string = "0" + hex_string
     return "0x" + "".join([hex_string[i : i + 2] for i in range(0, len(hex_string), 2)])
+
+
+# Equipment class name to model name mapping
+EQUIPMENT_MODEL_NAMES: Dict[str, str] = {
+    "VAVBox": "ACE-VAV-1000",
+    "AirHandlingUnit": "ACE-AHU-2000",
+    "Chiller": "ACE-CH-3000",
+    "Boiler": "ACE-BLR-4000",
+    "CoolingTower": "ACE-CT-5000",
+    "Building": "ACE-BMS-6000",
+}
+
+DEFAULT_MODEL_NAME = "ACE-SIM-1000"
+
+
+def get_package_version() -> str:
+    """
+    Get the version of the hvacnetwork package.
+
+    Returns:
+        Version string, or "0.0.0-dev" if not installed as a package.
+    """
+    try:
+        return version("hvacnetwork")
+    except PackageNotFoundError:
+        return "0.0.0-dev"
+
+
+def generate_firmware_revision(device_name: str) -> str:
+    """
+    Generate a firmware revision string from package version and device name.
+
+    The format is: <package_version>-<truncated_md5>
+    where truncated_md5 is the first 8 characters of the MD5 hash of the device name.
+
+    Args:
+        device_name: Name of the device to hash
+
+    Returns:
+        Firmware revision string like "0.1.0-a1b2c3d4"
+    """
+    pkg_version = get_package_version()
+    name_hash = hashlib.md5(device_name.encode()).hexdigest()[:8]
+    return f"{pkg_version}-{name_hash}"
+
+
+def get_model_name_for_equipment(equipment: Any) -> str:
+    """
+    Get the model name based on equipment class type.
+
+    Args:
+        equipment: Equipment instance
+
+    Returns:
+        Model name string based on equipment type
+    """
+    class_name = equipment.__class__.__name__
+    return EQUIPMENT_MODEL_NAMES.get(class_name, DEFAULT_MODEL_NAME)
 
 
 @dataclass
@@ -93,11 +153,14 @@ class BACnetDeviceConfig:
         return self.vlan_name is not None
 
 
-def _build_device_config(equipment_name: str, config: BACnetDeviceConfig) -> List[Dict[str, Any]]:
+def _build_device_config(
+    equipment: Any, equipment_name: str, config: BACnetDeviceConfig
+) -> List[Dict[str, Any]]:
     """
     Build the JSON configuration for a BACnet device.
 
     Args:
+        equipment: Equipment instance (used for determining model name)
         equipment_name: Name of the equipment
         config: Device configuration
 
@@ -112,16 +175,24 @@ def _build_device_config(equipment_name: str, config: BACnetDeviceConfig) -> Lis
     device_name = config.device_name or f"Device-{equipment_name}"
     description = config.description or f"Simulated Equipment - {equipment_name}"
 
+    # Get model name from equipment type (unless explicitly configured)
+    model_name = config.model_name
+    if model_name == "HVAC-Simulator":  # Default value, override with equipment-specific
+        model_name = get_model_name_for_equipment(equipment)
+
+    # Generate firmware revision from package version and device name
+    firmware_revision = generate_firmware_revision(device_name)
+
     # Base device configuration
     app_config: List[Dict[str, Any]] = [
         {
             "apdu-segment-timeout": 1000,
             "apdu-timeout": 3000,
-            "application-software-version": "1.0",
+            "application-software-version": get_package_version(),
             "database-revision": 1,
-            "firmware-revision": "N/A",
+            "firmware-revision": firmware_revision,
             "max-apdu-length-accepted": BACNET_MAX_APDU_LENGTH,
-            "model-name": config.model_name,
+            "model-name": model_name,
             "number-of-apdu-retries": 3,
             "object-identifier": f"device,{device_id}",
             "object-name": device_name,
@@ -218,7 +289,7 @@ def create_bacnet_device(
         )
 
     # Build configuration
-    app_config = _build_device_config(equipment_name, config)
+    app_config = _build_device_config(equipment, equipment_name, config)
 
     try:
         # Create the application
