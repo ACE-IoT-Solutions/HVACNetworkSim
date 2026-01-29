@@ -1,0 +1,481 @@
+@prefix brick: <https://brickschema.org/schema/Brick#> .
+@prefix campus: <http://example.org/campus#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix unit: <http://qudt.org/vocab/unit/> .
+
+# Large Campus Simulation Example
+# ================================
+# 5 Buildings, 12 AHUs, 100+ VAVs, Central Plant
+#
+# Building Summary:
+#   - Administration (Bldg A): 2 AHUs, 16 VAVs, 40,000 sq ft
+#   - Engineering (Bldg B): 3 AHUs, 30 VAVs, 75,000 sq ft
+#   - Student Center (Bldg C): 2 AHUs, 20 VAVs, 50,000 sq ft
+#   - Library (Bldg D): 2 AHUs, 18 VAVs, 45,000 sq ft
+#   - Research Lab (Bldg E): 3 AHUs, 24 VAVs, 60,000 sq ft
+#
+# Central Plant:
+#   - 2 Chillers (800 tons each)
+#   - 2 Boilers (2000 MBH each)
+#   - 2 Cooling Towers
+
+<urn:large-campus> a owl:Ontology ;
+    rdfs:label "Large Campus HVAC Simulation" ;
+    owl:imports <https://brickschema.org/schema/1.4/Brick> .
+
+# =============================================================================
+# BUILDING A - Administration Building
+# 3 floors, executive offices, conference rooms
+# =============================================================================
+
+campus:BuildingA a brick:Building ;
+    rdfs:label "Administration Building" ;
+    brick:area [ brick:hasUnits unit:FT_2 ; brick:value "40000" ] .
+
+# Building A - AHU-A1 (Floors 1-2)
+campus:BuildingA_AHU_A1 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingA ;
+    brick:feeds campus:BuildingA_VAV_A101, campus:BuildingA_VAV_A102, campus:BuildingA_VAV_A103,
+        campus:BuildingA_VAV_A104, campus:BuildingA_VAV_A105, campus:BuildingA_VAV_A106,
+        campus:BuildingA_VAV_A107, campus:BuildingA_VAV_A108 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building A - AHU-A2 (Floor 3 - Executive)
+campus:BuildingA_AHU_A2 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingA ;
+    brick:feeds campus:BuildingA_VAV_A201, campus:BuildingA_VAV_A202, campus:BuildingA_VAV_A203,
+        campus:BuildingA_VAV_A204, campus:BuildingA_VAV_A205, campus:BuildingA_VAV_A206,
+        campus:BuildingA_VAV_A207, campus:BuildingA_VAV_A208 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building A - Floor 1-2 VAVs (AHU-A1)
+campus:BuildingA_VAV_A101 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A101 .
+campus:BuildingA_VAV_A102 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A102 .
+campus:BuildingA_VAV_A103 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A103 .
+campus:BuildingA_VAV_A104 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A104 .
+campus:BuildingA_VAV_A105 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A105 .
+campus:BuildingA_VAV_A106 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A106 .
+campus:BuildingA_VAV_A107 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A107 .
+campus:BuildingA_VAV_A108 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A108 .
+
+# Building A - Floor 3 VAVs (AHU-A2 - Executive)
+campus:BuildingA_VAV_A201 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A201 .
+campus:BuildingA_VAV_A202 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A202 .
+campus:BuildingA_VAV_A203 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A203 .
+campus:BuildingA_VAV_A204 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A204 .
+campus:BuildingA_VAV_A205 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A205 .
+campus:BuildingA_VAV_A206 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A206 .
+campus:BuildingA_VAV_A207 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A207 .
+campus:BuildingA_VAV_A208 a brick:VAV ; brick:isPartOf campus:BuildingA ; brick:feeds campus:BuildingA_Zone_A208 .
+
+# Building A Zones
+campus:BuildingA_Zone_A101 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A102 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A103 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A104 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A105 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A106 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A107 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A108 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A201 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A202 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A203 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A204 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A205 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A206 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A207 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+campus:BuildingA_Zone_A208 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingA .
+
+# =============================================================================
+# BUILDING B - Engineering Building
+# 4 floors, classrooms, labs, faculty offices
+# =============================================================================
+
+campus:BuildingB a brick:Building ;
+    rdfs:label "Engineering Building" ;
+    brick:area [ brick:hasUnits unit:FT_2 ; brick:value "75000" ] .
+
+# Building B - AHU-B1 (Floor 1 - Labs)
+campus:BuildingB_AHU_B1 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingB ;
+    brick:feeds campus:BuildingB_VAV_B101, campus:BuildingB_VAV_B102, campus:BuildingB_VAV_B103,
+        campus:BuildingB_VAV_B104, campus:BuildingB_VAV_B105, campus:BuildingB_VAV_B106,
+        campus:BuildingB_VAV_B107, campus:BuildingB_VAV_B108, campus:BuildingB_VAV_B109,
+        campus:BuildingB_VAV_B110 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building B - AHU-B2 (Floors 2-3 - Classrooms)
+campus:BuildingB_AHU_B2 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingB ;
+    brick:feeds campus:BuildingB_VAV_B201, campus:BuildingB_VAV_B202, campus:BuildingB_VAV_B203,
+        campus:BuildingB_VAV_B204, campus:BuildingB_VAV_B205, campus:BuildingB_VAV_B206,
+        campus:BuildingB_VAV_B207, campus:BuildingB_VAV_B208, campus:BuildingB_VAV_B209,
+        campus:BuildingB_VAV_B210 ;
+    brick:isFedBy campus:CentralPlant_Chiller2 .
+
+# Building B - AHU-B3 (Floor 4 - Faculty Offices)
+campus:BuildingB_AHU_B3 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingB ;
+    brick:feeds campus:BuildingB_VAV_B301, campus:BuildingB_VAV_B302, campus:BuildingB_VAV_B303,
+        campus:BuildingB_VAV_B304, campus:BuildingB_VAV_B305, campus:BuildingB_VAV_B306,
+        campus:BuildingB_VAV_B307, campus:BuildingB_VAV_B308, campus:BuildingB_VAV_B309,
+        campus:BuildingB_VAV_B310 ;
+    brick:isFedBy campus:CentralPlant_Chiller2 .
+
+# Building B - Floor 1 VAVs (Labs)
+campus:BuildingB_VAV_B101 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B101 .
+campus:BuildingB_VAV_B102 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B102 .
+campus:BuildingB_VAV_B103 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B103 .
+campus:BuildingB_VAV_B104 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B104 .
+campus:BuildingB_VAV_B105 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B105 .
+campus:BuildingB_VAV_B106 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B106 .
+campus:BuildingB_VAV_B107 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B107 .
+campus:BuildingB_VAV_B108 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B108 .
+campus:BuildingB_VAV_B109 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B109 .
+campus:BuildingB_VAV_B110 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B110 .
+
+# Building B - Floors 2-3 VAVs (Classrooms)
+campus:BuildingB_VAV_B201 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B201 .
+campus:BuildingB_VAV_B202 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B202 .
+campus:BuildingB_VAV_B203 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B203 .
+campus:BuildingB_VAV_B204 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B204 .
+campus:BuildingB_VAV_B205 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B205 .
+campus:BuildingB_VAV_B206 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B206 .
+campus:BuildingB_VAV_B207 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B207 .
+campus:BuildingB_VAV_B208 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B208 .
+campus:BuildingB_VAV_B209 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B209 .
+campus:BuildingB_VAV_B210 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B210 .
+
+# Building B - Floor 4 VAVs (Faculty)
+campus:BuildingB_VAV_B301 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B301 .
+campus:BuildingB_VAV_B302 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B302 .
+campus:BuildingB_VAV_B303 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B303 .
+campus:BuildingB_VAV_B304 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B304 .
+campus:BuildingB_VAV_B305 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B305 .
+campus:BuildingB_VAV_B306 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B306 .
+campus:BuildingB_VAV_B307 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B307 .
+campus:BuildingB_VAV_B308 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B308 .
+campus:BuildingB_VAV_B309 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B309 .
+campus:BuildingB_VAV_B310 a brick:VAV ; brick:isPartOf campus:BuildingB ; brick:feeds campus:BuildingB_Zone_B310 .
+
+# Building B Zones
+campus:BuildingB_Zone_B101 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B102 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B103 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B104 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B105 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B106 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B107 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B108 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B109 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B110 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B201 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B202 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B203 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B204 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B205 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B206 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B207 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B208 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B209 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B210 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B301 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B302 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B303 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B304 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B305 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B306 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B307 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B308 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B309 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+campus:BuildingB_Zone_B310 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingB .
+
+# =============================================================================
+# BUILDING C - Student Center
+# 2 floors, cafeteria, meeting rooms, lounges
+# =============================================================================
+
+campus:BuildingC a brick:Building ;
+    rdfs:label "Student Center" ;
+    brick:area [ brick:hasUnits unit:FT_2 ; brick:value "50000" ] .
+
+# Building C - AHU-C1 (Floor 1 - Cafeteria/Food Service)
+campus:BuildingC_AHU_C1 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingC ;
+    brick:feeds campus:BuildingC_VAV_C101, campus:BuildingC_VAV_C102, campus:BuildingC_VAV_C103,
+        campus:BuildingC_VAV_C104, campus:BuildingC_VAV_C105, campus:BuildingC_VAV_C106,
+        campus:BuildingC_VAV_C107, campus:BuildingC_VAV_C108, campus:BuildingC_VAV_C109,
+        campus:BuildingC_VAV_C110 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building C - AHU-C2 (Floor 2 - Meeting Rooms/Lounges)
+campus:BuildingC_AHU_C2 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingC ;
+    brick:feeds campus:BuildingC_VAV_C201, campus:BuildingC_VAV_C202, campus:BuildingC_VAV_C203,
+        campus:BuildingC_VAV_C204, campus:BuildingC_VAV_C205, campus:BuildingC_VAV_C206,
+        campus:BuildingC_VAV_C207, campus:BuildingC_VAV_C208, campus:BuildingC_VAV_C209,
+        campus:BuildingC_VAV_C210 ;
+    brick:isFedBy campus:CentralPlant_Chiller2 .
+
+# Building C - Floor 1 VAVs
+campus:BuildingC_VAV_C101 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C101 .
+campus:BuildingC_VAV_C102 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C102 .
+campus:BuildingC_VAV_C103 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C103 .
+campus:BuildingC_VAV_C104 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C104 .
+campus:BuildingC_VAV_C105 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C105 .
+campus:BuildingC_VAV_C106 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C106 .
+campus:BuildingC_VAV_C107 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C107 .
+campus:BuildingC_VAV_C108 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C108 .
+campus:BuildingC_VAV_C109 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C109 .
+campus:BuildingC_VAV_C110 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C110 .
+
+# Building C - Floor 2 VAVs
+campus:BuildingC_VAV_C201 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C201 .
+campus:BuildingC_VAV_C202 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C202 .
+campus:BuildingC_VAV_C203 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C203 .
+campus:BuildingC_VAV_C204 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C204 .
+campus:BuildingC_VAV_C205 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C205 .
+campus:BuildingC_VAV_C206 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C206 .
+campus:BuildingC_VAV_C207 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C207 .
+campus:BuildingC_VAV_C208 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C208 .
+campus:BuildingC_VAV_C209 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C209 .
+campus:BuildingC_VAV_C210 a brick:VAV ; brick:isPartOf campus:BuildingC ; brick:feeds campus:BuildingC_Zone_C210 .
+
+# Building C Zones
+campus:BuildingC_Zone_C101 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C102 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C103 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C104 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C105 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C106 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C107 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C108 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C109 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C110 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C201 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C202 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C203 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C204 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C205 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C206 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C207 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C208 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C209 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+campus:BuildingC_Zone_C210 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingC .
+
+# =============================================================================
+# BUILDING D - Library
+# 3 floors, reading rooms, stacks, special collections
+# =============================================================================
+
+campus:BuildingD a brick:Building ;
+    rdfs:label "Library" ;
+    brick:area [ brick:hasUnits unit:FT_2 ; brick:value "45000" ] .
+
+# Building D - AHU-D1 (Floors 1-2 - General Stacks)
+campus:BuildingD_AHU_D1 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingD ;
+    brick:feeds campus:BuildingD_VAV_D101, campus:BuildingD_VAV_D102, campus:BuildingD_VAV_D103,
+        campus:BuildingD_VAV_D104, campus:BuildingD_VAV_D105, campus:BuildingD_VAV_D106,
+        campus:BuildingD_VAV_D107, campus:BuildingD_VAV_D108, campus:BuildingD_VAV_D109 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building D - AHU-D2 (Floor 3 - Special Collections, precise climate)
+campus:BuildingD_AHU_D2 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingD ;
+    brick:feeds campus:BuildingD_VAV_D201, campus:BuildingD_VAV_D202, campus:BuildingD_VAV_D203,
+        campus:BuildingD_VAV_D204, campus:BuildingD_VAV_D205, campus:BuildingD_VAV_D206,
+        campus:BuildingD_VAV_D207, campus:BuildingD_VAV_D208, campus:BuildingD_VAV_D209 ;
+    brick:isFedBy campus:CentralPlant_Chiller2 .
+
+# Building D - Floors 1-2 VAVs
+campus:BuildingD_VAV_D101 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D101 .
+campus:BuildingD_VAV_D102 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D102 .
+campus:BuildingD_VAV_D103 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D103 .
+campus:BuildingD_VAV_D104 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D104 .
+campus:BuildingD_VAV_D105 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D105 .
+campus:BuildingD_VAV_D106 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D106 .
+campus:BuildingD_VAV_D107 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D107 .
+campus:BuildingD_VAV_D108 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D108 .
+campus:BuildingD_VAV_D109 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D109 .
+
+# Building D - Floor 3 VAVs (Special Collections)
+campus:BuildingD_VAV_D201 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D201 .
+campus:BuildingD_VAV_D202 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D202 .
+campus:BuildingD_VAV_D203 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D203 .
+campus:BuildingD_VAV_D204 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D204 .
+campus:BuildingD_VAV_D205 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D205 .
+campus:BuildingD_VAV_D206 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D206 .
+campus:BuildingD_VAV_D207 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D207 .
+campus:BuildingD_VAV_D208 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D208 .
+campus:BuildingD_VAV_D209 a brick:VAV ; brick:isPartOf campus:BuildingD ; brick:feeds campus:BuildingD_Zone_D209 .
+
+# Building D Zones
+campus:BuildingD_Zone_D101 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D102 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D103 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D104 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D105 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D106 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D107 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D108 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D109 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D201 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D202 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D203 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D204 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D205 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D206 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D207 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D208 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+campus:BuildingD_Zone_D209 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingD .
+
+# =============================================================================
+# BUILDING E - Research Lab
+# 3 floors, wet labs, dry labs, cleanrooms
+# =============================================================================
+
+campus:BuildingE a brick:Building ;
+    rdfs:label "Research Lab" ;
+    brick:area [ brick:hasUnits unit:FT_2 ; brick:value "60000" ] .
+
+# Building E - AHU-E1 (Floor 1 - Wet Labs, 100% outside air)
+campus:BuildingE_AHU_E1 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingE ;
+    brick:feeds campus:BuildingE_VAV_E101, campus:BuildingE_VAV_E102, campus:BuildingE_VAV_E103,
+        campus:BuildingE_VAV_E104, campus:BuildingE_VAV_E105, campus:BuildingE_VAV_E106,
+        campus:BuildingE_VAV_E107, campus:BuildingE_VAV_E108 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building E - AHU-E2 (Floor 2 - Dry Labs)
+campus:BuildingE_AHU_E2 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingE ;
+    brick:feeds campus:BuildingE_VAV_E201, campus:BuildingE_VAV_E202, campus:BuildingE_VAV_E203,
+        campus:BuildingE_VAV_E204, campus:BuildingE_VAV_E205, campus:BuildingE_VAV_E206,
+        campus:BuildingE_VAV_E207, campus:BuildingE_VAV_E208 ;
+    brick:isFedBy campus:CentralPlant_Chiller2 .
+
+# Building E - AHU-E3 (Floor 3 - Cleanrooms, HEPA filtered)
+campus:BuildingE_AHU_E3 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:BuildingE ;
+    brick:feeds campus:BuildingE_VAV_E301, campus:BuildingE_VAV_E302, campus:BuildingE_VAV_E303,
+        campus:BuildingE_VAV_E304, campus:BuildingE_VAV_E305, campus:BuildingE_VAV_E306,
+        campus:BuildingE_VAV_E307, campus:BuildingE_VAV_E308 ;
+    brick:isFedBy campus:CentralPlant_Chiller1 .
+
+# Building E - Floor 1 VAVs (Wet Labs)
+campus:BuildingE_VAV_E101 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E101 .
+campus:BuildingE_VAV_E102 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E102 .
+campus:BuildingE_VAV_E103 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E103 .
+campus:BuildingE_VAV_E104 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E104 .
+campus:BuildingE_VAV_E105 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E105 .
+campus:BuildingE_VAV_E106 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E106 .
+campus:BuildingE_VAV_E107 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E107 .
+campus:BuildingE_VAV_E108 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E108 .
+
+# Building E - Floor 2 VAVs (Dry Labs)
+campus:BuildingE_VAV_E201 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E201 .
+campus:BuildingE_VAV_E202 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E202 .
+campus:BuildingE_VAV_E203 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E203 .
+campus:BuildingE_VAV_E204 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E204 .
+campus:BuildingE_VAV_E205 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E205 .
+campus:BuildingE_VAV_E206 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E206 .
+campus:BuildingE_VAV_E207 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E207 .
+campus:BuildingE_VAV_E208 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E208 .
+
+# Building E - Floor 3 VAVs (Cleanrooms)
+campus:BuildingE_VAV_E301 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E301 .
+campus:BuildingE_VAV_E302 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E302 .
+campus:BuildingE_VAV_E303 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E303 .
+campus:BuildingE_VAV_E304 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E304 .
+campus:BuildingE_VAV_E305 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E305 .
+campus:BuildingE_VAV_E306 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E306 .
+campus:BuildingE_VAV_E307 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E307 .
+campus:BuildingE_VAV_E308 a brick:VAV ; brick:isPartOf campus:BuildingE ; brick:feeds campus:BuildingE_Zone_E308 .
+
+# Building E Zones
+campus:BuildingE_Zone_E101 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E102 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E103 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E104 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E105 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E106 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E107 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E108 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E201 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E202 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E203 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E204 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E205 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E206 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E207 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E208 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E301 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E302 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E303 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E304 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E305 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E306 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E307 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+campus:BuildingE_Zone_E308 a brick:HVAC_Zone ; brick:isPartOf campus:BuildingE .
+
+# =============================================================================
+# CENTRAL PLANT - Shared Campus Infrastructure
+# =============================================================================
+
+campus:CentralPlant a brick:Building ;
+    rdfs:label "Central Plant" ;
+    brick:area [ brick:hasUnits unit:FT_2 ; brick:value "5000" ] .
+
+# Chillers
+campus:CentralPlant_Chiller1 a brick:Chiller ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Chiller-1 (800 tons)" .
+
+campus:CentralPlant_Chiller2 a brick:Chiller ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Chiller-2 (800 tons)" .
+
+# Boilers
+campus:CentralPlant_Boiler1 a brick:Boiler ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Boiler-1 (2000 MBH)" .
+
+campus:CentralPlant_Boiler2 a brick:Boiler ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Boiler-2 (2000 MBH)" .
+
+# Cooling Towers
+campus:CentralPlant_CoolingTower1 a brick:Cooling_Tower ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Cooling Tower-1" .
+
+campus:CentralPlant_CoolingTower2 a brick:Cooling_Tower ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Cooling Tower-2" .
+
+# Pumps
+campus:CentralPlant_CHWP1 a brick:Chilled_Water_Pump ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Primary CHW Pump-1" .
+
+campus:CentralPlant_CHWP2 a brick:Chilled_Water_Pump ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Primary CHW Pump-2" .
+
+campus:CentralPlant_CWP1 a brick:Condenser_Water_Pump ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Condenser Water Pump-1" .
+
+campus:CentralPlant_CWP2 a brick:Condenser_Water_Pump ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Condenser Water Pump-2" .
+
+campus:CentralPlant_HWP1 a brick:Hot_Water_Pump ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Hot Water Pump-1" .
+
+campus:CentralPlant_HWP2 a brick:Hot_Water_Pump ;
+    brick:isPartOf campus:CentralPlant ;
+    rdfs:label "Hot Water Pump-2" .

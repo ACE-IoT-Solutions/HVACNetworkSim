@@ -34,6 +34,13 @@ Options:
   --stop                Stop the running simulation
   --logs                Show logs from the container
   -e KEY=VALUE          Set additional environment variables
+
+Multi-building options:
+  --multi-building      Enable multi-building mode with BBMD
+  --inject-errors       Enable error injection for training/testing
+  --duplicate-ids N     Inject N duplicate device IDs
+  --duplicate-networks N  Inject N duplicate network numbers
+  --duplicate-routers N   Inject N duplicate routers
 ```
 
 ### Examples
@@ -54,6 +61,116 @@ Options:
 
 # Stop the running simulation
 ./hvac-sim --stop
+
+# Run multi-building campus simulation
+./hvac-sim --multi-building examples/multi_building_campus.ttl
+
+# Run with error injection for training
+./hvac-sim --inject-errors --duplicate-ids 2 bldg36.ttl
+```
+
+## Multi-Building Campus Simulation
+
+The simulator supports multi-building campus simulations with BBMDs (BACnet Broadcast Management Devices) connecting buildings across a WAN:
+
+```
+Building 1 (Networks 1000-1999)       Building 2 (Networks 2000-2999)
+        [BBMD-1] <---- WAN ----> [BBMD-2]
+           |                        |
+        [Router]                 [Router]
+           |                        |
+      [VLANs]                   [VLANs]
+```
+
+### Network Number Allocation
+
+Each building gets a dedicated range of 1000 network numbers:
+
+| Building | Network Range | Central Plant | AHU Networks |
+|----------|---------------|---------------|--------------|
+| Building 1 | 1000-1999 | 1001 | 1100, 1200, ... |
+| Building 2 | 2000-2999 | 2001 | 2100, 2200, ... |
+| Building N | N×1000-(N+1)×1000-1 | N×1000+1 | N×1000+100, ... |
+
+### Sample Campus Files
+
+| File | Buildings | AHUs | VAVs | Description |
+|------|-----------|------|------|-------------|
+| `multi_building_campus.ttl` | 2 | 2 | 7 | Small demo with 2 buildings |
+| `large_campus.ttl` | 6 | 12 | 108 | Full campus simulation |
+
+### Running Multi-Building Simulations
+
+```bash
+# Small 2-building demo
+./hvac-sim --multi-building examples/multi_building_campus.ttl
+
+# Large campus (5 buildings + central plant, 100+ devices)
+./hvac-sim --multi-building examples/large_campus.ttl
+
+# With error injection for training
+./hvac-sim --multi-building --inject-errors --duplicate-ids 5 examples/large_campus.ttl
+```
+
+### Large Campus Layout
+
+The `large_campus.ttl` file simulates a university/corporate campus:
+
+| Building | Description | Floors | AHUs | VAVs | Plant |
+|----------|-------------|--------|------|------|-------|
+| **Building A** | Administration | 3 | 2 | 16 | - |
+| **Building B** | Engineering | 4 | 3 | 30 | - |
+| **Building C** | Student Center | 2 | 2 | 20 | - |
+| **Building D** | Library | 3 | 2 | 18 | - |
+| **Building E** | Research Lab | 3 | 3 | 24 | - |
+| **Central Plant** | Shared Infrastructure | - | - | - | 2 Chillers, 2 Boilers, 2 Cooling Towers |
+
+### Creating Multi-Building TTL Files
+
+Create a Brick schema with multiple `brick:Building` instances and use `brick:isPartOf` to associate equipment:
+
+```turtle
+@prefix brick: <https://brickschema.org/schema/Brick#> .
+@prefix ex: <http://example.com/building#> .
+
+ex:Building1 a brick:Building .
+ex:Building2 a brick:Building .
+
+ex:AHU1 a brick:AHU ;
+    brick:isPartOf ex:Building1 .
+
+ex:AHU2 a brick:AHU ;
+    brick:isPartOf ex:Building2 .
+```
+
+See `examples/multi_building_campus.ttl` for a basic example or `examples/large_campus.ttl` for a complete campus.
+
+## Error Injection for Testing
+
+The error injection feature deliberately creates BACnet configuration errors, useful for:
+- Training BACnet troubleshooting tools
+- Testing network diagnostic software
+- Creating realistic error scenarios for education
+
+### Error Types
+
+| Error Type | Description |
+|------------|-------------|
+| Duplicate Device IDs | Multiple devices with the same BACnet device instance ID |
+| Duplicate Network Numbers | Multiple networks claiming the same network number |
+| Duplicate Routers | Multiple routers on the same network segment |
+
+### Examples
+
+```bash
+# Inject 2 duplicate device IDs
+./hvac-sim --inject-errors --duplicate-ids 2 bldg36.ttl
+
+# Inject multiple error types
+./hvac-sim --inject-errors --duplicate-ids 2 --duplicate-networks 1 bldg36.ttl
+
+# Combine with multi-building mode
+./hvac-sim --multi-building --inject-errors --duplicate-ids 3 examples/multi_building_campus.ttl
 ```
 
 ## Manual Container Commands
@@ -86,6 +203,11 @@ podman run --rm -it -p 47808:47808/udp \
 | `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
 | `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode) |
+| `MULTI_BUILDING_MODE` | false | Enable multi-building campus simulation |
+| `INJECT_ERRORS` | false | Enable error injection mode |
+| `DUPLICATE_DEVICE_IDS` | 0 | Number of duplicate device IDs to inject |
+| `DUPLICATE_NETWORK_NUMBERS` | 0 | Number of duplicate network numbers to inject |
+| `DUPLICATE_ROUTERS` | 0 | Number of duplicate routers to inject |
 
 ## Local Development
 
@@ -169,21 +291,31 @@ src/
 ├── bacnet/                  # BACnet integration
 │   ├── device.py            # Device management
 │   ├── mixin.py             # Application mixin
-│   └── points.py            # Point creation
+│   ├── points.py            # Point creation
+│   ├── bbmd.py              # BBMD management
+│   └── errors.py            # Error injection
+├── brick/                   # Brick schema parsing
+│   ├── parser.py            # TTL file parser
+│   └── campus.py            # Multi-building structures
 ├── vav_box.py              # VAV terminal unit
 ├── ahu.py                  # Air handling unit
 ├── chiller.py              # Chiller
 ├── boiler.py               # Boiler
 ├── cooling_tower.py        # Cooling tower
-└── building.py             # Building container
+├── building.py             # Building container
+└── bacnet_network.py       # Network management
 
 examples/
 ├── simple_vav.py           # Basic VAV example
 ├── complete_building.py    # Full building simulation
+├── multi_building_campus.ttl  # 2-building demo (7 VAVs)
+├── large_campus.ttl        # Full campus (6 buildings, 108 VAVs)
 └── ...                     # Additional examples
 
 tests/
 ├── test_*.py               # Unit tests
+├── test_multi_building.py  # Multi-building tests
+├── test_bbmd_errors.py     # BBMD and error tests
 ├── integration/            # Integration tests
 └── performance/            # Performance benchmarks
 ```
@@ -275,6 +407,9 @@ uv run pytest --cov=src
 - Automatic BACnet point generation
 - Configuration via YAML or Python dataclasses
 - Comprehensive test suite with performance benchmarks
+- Multi-building campus simulation with BBMD routing
+- Error injection for training and testing BACnet tools
+- Brick schema support for equipment topology
 
 ## Requirements
 

@@ -12,6 +12,12 @@ Usage:
     # Run with custom device ID
     ./hvac-sim --device-id 1000 data/brick_schemas/bldg36.ttl
 
+    # Run multi-building campus simulation
+    ./hvac-sim --multi-building examples/multi_building_campus.ttl
+
+    # Run with error injection (for training/testing)
+    ./hvac-sim --inject-errors --duplicate-ids 2 bldg36.ttl
+
     # List available brick files
     ./hvac-sim --list
 """
@@ -155,6 +161,11 @@ def run_simulation(
     detach: bool = False,
     network_mode: str = None,
     extra_env: dict = None,
+    multi_building: bool = False,
+    inject_errors: bool = False,
+    duplicate_ids: int = 0,
+    duplicate_networks: int = 0,
+    duplicate_routers: int = 0,
 ):
     """Run the HVAC simulation container."""
 
@@ -195,6 +206,20 @@ def run_simulation(
 
     if device_id:
         env_vars["BACNET_DEVICE_ID"] = str(device_id)
+
+    # Multi-building mode
+    if multi_building:
+        env_vars["MULTI_BUILDING_MODE"] = "true"
+
+    # Error injection
+    if inject_errors:
+        env_vars["INJECT_ERRORS"] = "true"
+        if duplicate_ids > 0:
+            env_vars["DUPLICATE_DEVICE_IDS"] = str(duplicate_ids)
+        if duplicate_networks > 0:
+            env_vars["DUPLICATE_NETWORK_NUMBERS"] = str(duplicate_networks)
+        if duplicate_routers > 0:
+            env_vars["DUPLICATE_ROUTERS"] = str(duplicate_routers)
 
     # Add any extra environment variables
     if extra_env:
@@ -281,6 +306,43 @@ Examples:
         help="Set additional environment variables",
     )
 
+    # Multi-building and error injection options
+    parser.add_argument(
+        "--multi-building",
+        action="store_true",
+        help="Enable multi-building mode with BBMD for campus simulation",
+    )
+
+    parser.add_argument(
+        "--inject-errors",
+        action="store_true",
+        help="Enable error injection mode for training/testing",
+    )
+
+    parser.add_argument(
+        "--duplicate-ids",
+        type=int,
+        metavar="N",
+        default=0,
+        help="Inject N duplicate device IDs (requires --inject-errors)",
+    )
+
+    parser.add_argument(
+        "--duplicate-networks",
+        type=int,
+        metavar="N",
+        default=0,
+        help="Inject N duplicate network numbers (requires --inject-errors)",
+    )
+
+    parser.add_argument(
+        "--duplicate-routers",
+        type=int,
+        metavar="N",
+        default=0,
+        help="Inject N duplicate routers (requires --inject-errors)",
+    )
+
     args = parser.parse_args()
 
     # Handle --list
@@ -319,6 +381,14 @@ Examples:
                 key, value = env_str.split("=", 1)
                 extra_env[key] = value
 
+    # Validate error injection options
+    if (
+        args.duplicate_ids > 0 or args.duplicate_networks > 0 or args.duplicate_routers > 0
+    ) and not args.inject_errors:
+        print("Warning: --duplicate-* options require --inject-errors flag", file=sys.stderr)
+        print("Adding --inject-errors automatically...", file=sys.stderr)
+        args.inject_errors = True
+
     # Run the simulation
     return run_simulation(
         runtime=runtime,
@@ -328,6 +398,11 @@ Examples:
         detach=args.detach,
         network_mode=args.network,
         extra_env=extra_env,
+        multi_building=args.multi_building,
+        inject_errors=args.inject_errors,
+        duplicate_ids=args.duplicate_ids,
+        duplicate_networks=args.duplicate_networks,
+        duplicate_routers=args.duplicate_routers,
     )
 
 

@@ -1,0 +1,316 @@
+@prefix brick: <https://brickschema.org/schema/Brick#> .
+@prefix campus: <http://example.org/campus#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix unit: <http://qudt.org/vocab/unit/> .
+
+# Campus ontology definition
+<urn:campus> a owl:Ontology ;
+    rdfs:label "Multi-Building Campus Example" ;
+    owl:imports <https://brickschema.org/schema/1.4/Brick> .
+
+# =============================================================================
+# Building 1 - East Building (Chiller-cooled)
+# =============================================================================
+
+campus:Building1 a brick:Building ;
+    rdfs:label "East Building" ;
+    brick:area [ brick:hasUnits unit:FT_2 ;
+            brick:value "15000" ] .
+
+# Building 1 - AHU
+campus:Building1_AHU01 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:Building1 ;
+    brick:feeds campus:Building1_VAV101,
+        campus:Building1_VAV102,
+        campus:Building1_VAV103,
+        campus:Building1_VAV104 ;
+    brick:isFedBy campus:Building1_Chiller ;
+    brick:hasPoint campus:Building1_AHU01_SAT,
+        campus:Building1_AHU01_SAT_SP,
+        campus:Building1_AHU01_RAT,
+        campus:Building1_AHU01_MAT,
+        campus:Building1_AHU01_OAT,
+        campus:Building1_AHU01_CCV .
+
+campus:Building1_AHU01_SAT a brick:Supply_Air_Temperature_Sensor ;
+    rdfs:label "Building1.AHU01.Supply Air Temp" .
+
+campus:Building1_AHU01_SAT_SP a brick:Supply_Air_Temperature_Setpoint ;
+    rdfs:label "Building1.AHU01.Supply Air Temp Setpoint" .
+
+campus:Building1_AHU01_RAT a brick:Return_Air_Temperature_Sensor ;
+    rdfs:label "Building1.AHU01.Return Air Temp" .
+
+campus:Building1_AHU01_MAT a brick:Mixed_Air_Temperature_Sensor ;
+    rdfs:label "Building1.AHU01.Mixed Air Temp" .
+
+campus:Building1_AHU01_OAT a brick:Outside_Air_Temperature_Sensor ;
+    rdfs:label "Building1.AHU01.Outside Air Temp" .
+
+campus:Building1_AHU01_CCV a brick:Cooling_Command,
+        brick:Valve_Command ;
+    rdfs:label "Building1.AHU01.Cooling Coil Valve" .
+
+# Building 1 - VAV Boxes
+campus:Building1_VAV101 a brick:VAV ;
+    brick:isPartOf campus:Building1 ;
+    brick:feeds campus:Building1_Zone101 ;
+    brick:hasPoint campus:Building1_VAV101_ZAT,
+        campus:Building1_VAV101_ZAT_SP,
+        campus:Building1_VAV101_DAM,
+        campus:Building1_VAV101_SAF .
+
+campus:Building1_VAV101_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building1.VAV101.Zone Air Temp" .
+
+campus:Building1_VAV101_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building1.VAV101.Zone Air Temp Setpoint" .
+
+campus:Building1_VAV101_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building1.VAV101.Damper Command" .
+
+campus:Building1_VAV101_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building1.VAV101.Supply Air Flow" .
+
+campus:Building1_VAV102 a brick:VAV ;
+    brick:isPartOf campus:Building1 ;
+    brick:feeds campus:Building1_Zone102 ;
+    brick:hasPoint campus:Building1_VAV102_ZAT,
+        campus:Building1_VAV102_ZAT_SP,
+        campus:Building1_VAV102_DAM,
+        campus:Building1_VAV102_SAF .
+
+campus:Building1_VAV102_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building1.VAV102.Zone Air Temp" .
+
+campus:Building1_VAV102_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building1.VAV102.Zone Air Temp Setpoint" .
+
+campus:Building1_VAV102_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building1.VAV102.Damper Command" .
+
+campus:Building1_VAV102_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building1.VAV102.Supply Air Flow" .
+
+campus:Building1_VAV103 a brick:VAV ;
+    brick:isPartOf campus:Building1 ;
+    brick:feeds campus:Building1_Zone103 ;
+    brick:hasPoint campus:Building1_VAV103_ZAT,
+        campus:Building1_VAV103_ZAT_SP,
+        campus:Building1_VAV103_DAM,
+        campus:Building1_VAV103_SAF .
+
+campus:Building1_VAV103_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building1.VAV103.Zone Air Temp" .
+
+campus:Building1_VAV103_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building1.VAV103.Zone Air Temp Setpoint" .
+
+campus:Building1_VAV103_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building1.VAV103.Damper Command" .
+
+campus:Building1_VAV103_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building1.VAV103.Supply Air Flow" .
+
+campus:Building1_VAV104 a brick:VAV ;
+    brick:isPartOf campus:Building1 ;
+    brick:feeds campus:Building1_Zone104 ;
+    brick:hasPoint campus:Building1_VAV104_ZAT,
+        campus:Building1_VAV104_ZAT_SP,
+        campus:Building1_VAV104_DAM,
+        campus:Building1_VAV104_SAF,
+        campus:Building1_VAV104_RHV .
+
+campus:Building1_VAV104_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building1.VAV104.Zone Air Temp" .
+
+campus:Building1_VAV104_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building1.VAV104.Zone Air Temp Setpoint" .
+
+campus:Building1_VAV104_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building1.VAV104.Damper Command" .
+
+campus:Building1_VAV104_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building1.VAV104.Supply Air Flow" .
+
+campus:Building1_VAV104_RHV a brick:Reheat_Valve_Command ;
+    rdfs:label "Building1.VAV104.Reheat Valve Command" .
+
+# Building 1 - Zones
+campus:Building1_Zone101 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building1 ;
+    brick:hasPart campus:Building1_Room101 .
+
+campus:Building1_Zone102 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building1 ;
+    brick:hasPart campus:Building1_Room102 .
+
+campus:Building1_Zone103 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building1 ;
+    brick:hasPart campus:Building1_Room103 .
+
+campus:Building1_Zone104 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building1 ;
+    brick:hasPart campus:Building1_Room104 .
+
+campus:Building1_Room101 a brick:Room .
+campus:Building1_Room102 a brick:Room .
+campus:Building1_Room103 a brick:Room .
+campus:Building1_Room104 a brick:Room .
+
+# Building 1 - Chiller
+campus:Building1_Chiller a brick:Chiller ;
+    brick:isPartOf campus:Building1 ;
+    brick:hasPoint campus:Building1_Chiller_CHWST,
+        campus:Building1_Chiller_CHWRT,
+        campus:Building1_Chiller_Status .
+
+campus:Building1_Chiller_CHWST a brick:Chilled_Water_Supply_Temperature_Sensor ;
+    rdfs:label "Building1.Chiller.CHW Supply Temp" .
+
+campus:Building1_Chiller_CHWRT a brick:Chilled_Water_Return_Temperature_Sensor ;
+    rdfs:label "Building1.Chiller.CHW Return Temp" .
+
+campus:Building1_Chiller_Status a brick:Start_Stop_Command ;
+    rdfs:label "Building1.Chiller.Status" .
+
+# =============================================================================
+# Building 2 - West Building (Boiler-heated)
+# =============================================================================
+
+campus:Building2 a brick:Building ;
+    rdfs:label "West Building" ;
+    brick:area [ brick:hasUnits unit:FT_2 ;
+            brick:value "12000" ] .
+
+# Building 2 - AHU
+campus:Building2_AHU01 a brick:Air_Handler_Unit ;
+    brick:isPartOf campus:Building2 ;
+    brick:feeds campus:Building2_VAV201,
+        campus:Building2_VAV202,
+        campus:Building2_VAV203 ;
+    brick:isFedBy campus:Building2_Boiler ;
+    brick:hasPoint campus:Building2_AHU01_SAT,
+        campus:Building2_AHU01_SAT_SP,
+        campus:Building2_AHU01_RAT,
+        campus:Building2_AHU01_MAT,
+        campus:Building2_AHU01_OAT,
+        campus:Building2_AHU01_HCV .
+
+campus:Building2_AHU01_SAT a brick:Supply_Air_Temperature_Sensor ;
+    rdfs:label "Building2.AHU01.Supply Air Temp" .
+
+campus:Building2_AHU01_SAT_SP a brick:Supply_Air_Temperature_Setpoint ;
+    rdfs:label "Building2.AHU01.Supply Air Temp Setpoint" .
+
+campus:Building2_AHU01_RAT a brick:Return_Air_Temperature_Sensor ;
+    rdfs:label "Building2.AHU01.Return Air Temp" .
+
+campus:Building2_AHU01_MAT a brick:Mixed_Air_Temperature_Sensor ;
+    rdfs:label "Building2.AHU01.Mixed Air Temp" .
+
+campus:Building2_AHU01_OAT a brick:Outside_Air_Temperature_Sensor ;
+    rdfs:label "Building2.AHU01.Outside Air Temp" .
+
+campus:Building2_AHU01_HCV a brick:Heating_Command,
+        brick:Valve_Command ;
+    rdfs:label "Building2.AHU01.Heating Coil Valve" .
+
+# Building 2 - VAV Boxes
+campus:Building2_VAV201 a brick:VAV ;
+    brick:isPartOf campus:Building2 ;
+    brick:feeds campus:Building2_Zone201 ;
+    brick:hasPoint campus:Building2_VAV201_ZAT,
+        campus:Building2_VAV201_ZAT_SP,
+        campus:Building2_VAV201_DAM,
+        campus:Building2_VAV201_SAF .
+
+campus:Building2_VAV201_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building2.VAV201.Zone Air Temp" .
+
+campus:Building2_VAV201_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building2.VAV201.Zone Air Temp Setpoint" .
+
+campus:Building2_VAV201_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building2.VAV201.Damper Command" .
+
+campus:Building2_VAV201_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building2.VAV201.Supply Air Flow" .
+
+campus:Building2_VAV202 a brick:VAV ;
+    brick:isPartOf campus:Building2 ;
+    brick:feeds campus:Building2_Zone202 ;
+    brick:hasPoint campus:Building2_VAV202_ZAT,
+        campus:Building2_VAV202_ZAT_SP,
+        campus:Building2_VAV202_DAM,
+        campus:Building2_VAV202_SAF .
+
+campus:Building2_VAV202_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building2.VAV202.Zone Air Temp" .
+
+campus:Building2_VAV202_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building2.VAV202.Zone Air Temp Setpoint" .
+
+campus:Building2_VAV202_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building2.VAV202.Damper Command" .
+
+campus:Building2_VAV202_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building2.VAV202.Supply Air Flow" .
+
+campus:Building2_VAV203 a brick:VAV ;
+    brick:isPartOf campus:Building2 ;
+    brick:feeds campus:Building2_Zone203 ;
+    brick:hasPoint campus:Building2_VAV203_ZAT,
+        campus:Building2_VAV203_ZAT_SP,
+        campus:Building2_VAV203_DAM,
+        campus:Building2_VAV203_SAF,
+        campus:Building2_VAV203_RHV .
+
+campus:Building2_VAV203_ZAT a brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "Building2.VAV203.Zone Air Temp" .
+
+campus:Building2_VAV203_ZAT_SP a brick:Zone_Air_Temperature_Setpoint ;
+    rdfs:label "Building2.VAV203.Zone Air Temp Setpoint" .
+
+campus:Building2_VAV203_DAM a brick:Damper_Position_Setpoint ;
+    rdfs:label "Building2.VAV203.Damper Command" .
+
+campus:Building2_VAV203_SAF a brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "Building2.VAV203.Supply Air Flow" .
+
+campus:Building2_VAV203_RHV a brick:Reheat_Valve_Command ;
+    rdfs:label "Building2.VAV203.Reheat Valve Command" .
+
+# Building 2 - Zones
+campus:Building2_Zone201 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building2 ;
+    brick:hasPart campus:Building2_Room201 .
+
+campus:Building2_Zone202 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building2 ;
+    brick:hasPart campus:Building2_Room202 .
+
+campus:Building2_Zone203 a brick:HVAC_Zone ;
+    brick:isPartOf campus:Building2 ;
+    brick:hasPart campus:Building2_Room203 .
+
+campus:Building2_Room201 a brick:Room .
+campus:Building2_Room202 a brick:Room .
+campus:Building2_Room203 a brick:Room .
+
+# Building 2 - Boiler
+campus:Building2_Boiler a brick:Boiler ;
+    brick:isPartOf campus:Building2 ;
+    brick:hasPoint campus:Building2_Boiler_HWST,
+        campus:Building2_Boiler_HWRT,
+        campus:Building2_Boiler_Status .
+
+campus:Building2_Boiler_HWST a brick:Hot_Water_Supply_Temperature_Sensor ;
+    rdfs:label "Building2.Boiler.HW Supply Temp" .
+
+campus:Building2_Boiler_HWRT a brick:Hot_Water_Return_Temperature_Sensor ;
+    rdfs:label "Building2.Boiler.HW Return Temp" .
+
+campus:Building2_Boiler_Status a brick:Start_Stop_Command ;
+    rdfs:label "Building2.Boiler.Status" .

@@ -5,12 +5,21 @@ Flexible BACnet HVAC simulator entrypoint.
 This module serves as the main entry point for the container, supporting:
 - Simple VAV simulation mode (single device on BACnet/IP)
 - Brick schema-based simulation mode (routed networks per AHU)
+- Multi-building campus mode with BBMD peers
 - Auto-detection of container IP for BACnet networking
 
 Network Architecture (Brick Mode):
     Each AHU gets its own BACnet network with its terminal units.
     Central plant equipment (chillers, boilers) on a separate network.
     This mirrors real building BACnet topology.
+
+Network Architecture (Multi-Building Mode):
+    Building 1 (Networks 1000-1999)       Building 2 (Networks 2000-2999)
+            [BBMD-1] <---- WAN ----> [BBMD-2]
+               |                        |
+            [Router]                 [Router]
+               |                        |
+          [VLANs]                   [VLANs]
 
 Environment Variables:
     BACNET_ADDRESS: Full BACnet address with CIDR (e.g., "172.26.0.20/16")
@@ -19,6 +28,11 @@ Environment Variables:
     BACNET_PORT: BACnet UDP port (default: 47808)
     SIMULATION_MODE: "simple" or "brick" (default: simple)
     BRICK_TTL_FILE: Path to Brick TTL file (required for brick mode)
+    MULTI_BUILDING_MODE: Enable multi-building campus simulation with BBMD
+    INJECT_ERRORS: Enable error injection mode
+    DUPLICATE_DEVICE_IDS: Number of duplicate device IDs to inject
+    DUPLICATE_NETWORK_NUMBERS: Number of duplicate network numbers to inject
+    DUPLICATE_ROUTERS: Number of duplicate routers to inject
 """
 
 import asyncio
@@ -40,9 +54,12 @@ from src.ahu import AirHandlingUnit  # noqa: E402
 from src.boiler import Boiler  # noqa: E402
 from src.chiller import Chiller  # noqa: E402
 from src.bacnet_network import (  # noqa: E402
+    BACnetNetworkManager,
     create_building_networks_from_brick,
     get_vav_network_assignment,
 )
+from src.bacnet.bbmd import BBMDConfig, BBMDManager  # noqa: E402
+from src.bacnet.errors import BACnetErrorInjector, ErrorInjectionConfig  # noqa: E402
 
 
 def get_bacnet_address() -> str:
@@ -453,6 +470,357 @@ async def run_brick_simulation():
         logger.info("Simulation cancelled")
 
 
+async def run_multi_building_simulation():
+    """
+    Run a multi-building campus simulation with BBMD peers.
+
+    This creates a realistic campus network topology:
+    - Each building has its own BBMD
+    - Buildings are connected via BBMD peer relationships
+    - Each building has building-indexed network numbers
+    - Optional error injection for training/testing
+    """
+    ttl_file = os.getenv("BRICK_TTL_FILE")
+
+    if not ttl_file:
+        logger.error("BRICK_TTL_FILE environment variable not set")
+        sys.exit(1)
+
+    if not os.path.exists(ttl_file):
+        logger.error(f"Brick TTL file not found: {ttl_file}")
+        sys.exit(1)
+
+    logger.info("Starting Multi-Building Campus Simulation with BBMD")
+    logger.info(f"  TTL file: {ttl_file}")
+
+    # Check for rdflib
+    try:
+        import rdflib  # noqa: F401
+
+        del rdflib
+    except ImportError:
+        logger.error("rdflib is required for multi-building simulation")
+        sys.exit(1)
+
+    # Import the BrickParser
+    from src.brick.parser import BrickParser
+
+    # Parse the Brick schema for multiple buildings
+    logger.info(f"Parsing Brick schema: {ttl_file}")
+    parser = BrickParser(ttl_file)
+    campus = parser.extract_all_buildings()
+
+    logger.info(f"Found campus: {campus.name}")
+    logger.info(f"  Buildings: {len(campus.buildings)}")
+
+    if len(campus.buildings) < 1:
+        logger.warning("No buildings found in TTL file, falling back to simple simulation")
+        await run_simple_simulation()
+        return
+
+    # Get BACnet configuration
+    bacnet_address = get_bacnet_address()
+    bacnet_port = int(os.getenv("BACNET_PORT", "47808"))
+    ip_base = bacnet_address.split("/")[0]
+    subnet = bacnet_address.split("/")[1] if "/" in bacnet_address else "24"
+
+    # Create network manager in multi-building mode
+    network_manager = BACnetNetworkManager(multi_building_mode=True)
+
+    # Parse error injection configuration
+    inject_errors = os.getenv("INJECT_ERRORS", "").lower() == "true"
+    error_config = None
+    error_injector = None
+
+    if inject_errors:
+        dup_ids = int(os.getenv("DUPLICATE_DEVICE_IDS", "0"))
+        dup_nets = int(os.getenv("DUPLICATE_NETWORK_NUMBERS", "0"))
+        dup_routers = int(os.getenv("DUPLICATE_ROUTERS", "0"))
+
+        if dup_ids > 0 or dup_nets > 0 or dup_routers > 0:
+            error_config = ErrorInjectionConfig(
+                duplicate_device_ids=[(1000 + i, 1) for i in range(dup_ids)],
+                duplicate_network_numbers=[(1001 + i * 100, 1) for i in range(dup_nets)],
+                duplicate_routers=[1001 + i * 100 for i in range(dup_routers)],
+            )
+            error_injector = BACnetErrorInjector(error_config)
+            logger.info("Error injection enabled:")
+            logger.info(f"  Duplicate device IDs: {dup_ids}")
+            logger.info(f"  Duplicate network numbers: {dup_nets}")
+            logger.info(f"  Duplicate routers: {dup_routers}")
+
+    # Create BBMD manager
+    bbmd_manager = BBMDManager()
+    bbmd_configs: List[BBMDConfig] = []
+
+    # Register buildings and create BBMD configs
+    logger.info("\nConfiguring buildings:")
+    for idx, (building_name, building) in enumerate(campus.buildings.items()):
+        building_index = network_manager.register_building(building_name)
+        logger.info(
+            f"  {building_name}: Index {building_index}, Networks {building_index * 1000}-{(building_index + 1) * 1000 - 1}"
+        )
+
+        # Create BBMD config for this building
+        # Each building gets a unique IP (simulated - in real deployment these would be different IPs)
+        building_ip = f"{ip_base}"  # In simulation, all on same IP
+        bbmd_config = BBMDConfig(
+            ip_address=f"{building_ip}/{subnet}",
+            port=bacnet_port,
+            device_name=f"BBMD-{building_name}",
+            building_name=building_name,
+        )
+        bbmd_configs.append(bbmd_config)
+
+        # Create networks for this building's equipment
+        if building.ahus:
+            # Create central plant network for this building
+            network_manager.create_central_plant_network(
+                building_name=building_name,
+                building_index=building_index,
+            )
+
+            # Create AHU networks
+            for ahu_idx, ahu_name in enumerate(building.ahus.keys()):
+                network_manager.create_ahu_network(
+                    ahu_name=ahu_name,
+                    ahu_index=ahu_idx,
+                    building_name=building_name,
+                    building_index=building_index,
+                )
+
+    # Create peered BBMDs
+    logger.info("\nCreating BBMD peers:")
+    bbmd_apps = bbmd_manager.create_peer_bbmds(bbmd_configs, auto_peer=True)
+    for building_name, bbmd_app in bbmd_apps.items():
+        logger.info(f"  {building_name}: BBMD created")
+
+    # Create IP-to-VLAN router for external access
+    logger.info("\nCreating IP-to-VLAN router for external access...")
+    router = network_manager.create_ip_to_vlan_router(
+        ip_address=bacnet_address,
+        bacnet_port=bacnet_port,
+        device_id=999,
+        device_name="Campus-Router",
+    )
+
+    if router:
+        logger.info(f"Router created, BACnet/IP accessible on {bacnet_address}:{bacnet_port}")
+
+    # Storage for simulation objects
+    all_vavs: Dict[str, VAVBox] = {}
+    all_ahus: Dict[str, AirHandlingUnit] = {}
+    ahu_vav_map: Dict[str, List[VAVBox]] = {}
+
+    # Create equipment for each building
+    logger.info("\nCreating equipment:")
+    for building_name, building in campus.buildings.items():
+        logger.info(f"\n  Building: {building_name}")
+        building_index = network_manager.buildings.get(building_name, 1)
+
+        # Create VAVs
+        for vav_name, vav_data in building.vavs.items():
+            # Find which AHU this VAV belongs to
+            ahu_name = None
+            for ahu_id, ahu_info in building.ahus.items():
+                if "vavs" in ahu_info and vav_name in ahu_info.get("vavs", []):
+                    ahu_name = ahu_id
+                    break
+
+            # Default to first AHU if not found
+            if not ahu_name and building.ahus:
+                ahu_name = list(building.ahus.keys())[0]
+
+            if not ahu_name:
+                logger.warning(f"    {vav_name}: No AHU assignment, skipping")
+                continue
+
+            network_info = network_manager.get_network_for_ahu(ahu_name)
+            if not network_info:
+                logger.warning(f"    {vav_name}: No network for AHU {ahu_name}, skipping")
+                continue
+
+            vav = VAVBox(
+                name=vav_name,
+                min_airflow=100,
+                max_airflow=1000,
+                zone_temp_setpoint=72,
+                deadband=2,
+                discharge_air_temp_setpoint=55,
+                has_reheat=True,
+                zone_area=400,
+                zone_volume=3200,
+                window_area=80,
+                window_orientation="east",
+                thermal_mass=2.0,
+            )
+
+            app = network_manager.add_device_to_network(
+                equipment=vav, network_info=network_info, device_name=f"VAV-{vav_name}"
+            )
+
+            if app:
+                all_vavs[vav_name] = vav
+                if ahu_name not in ahu_vav_map:
+                    ahu_vav_map[ahu_name] = []
+                ahu_vav_map[ahu_name].append(vav)
+
+        # Create AHUs
+        for ahu_name, ahu_data in building.ahus.items():
+            network_info = network_manager.get_network_for_ahu(ahu_name)
+            if not network_info:
+                continue
+
+            vav_list = ahu_vav_map.get(ahu_name, [])
+            total_airflow = sum(v.max_airflow for v in vav_list) if vav_list else 10000
+
+            ahu = AirHandlingUnit(
+                name=ahu_name,
+                cooling_type="chilled_water",
+                supply_air_temp_setpoint=55,
+                min_supply_air_temp=52,
+                max_supply_air_temp=65,
+                max_supply_airflow=total_airflow * 1.2,
+                vav_boxes=vav_list,
+                enable_supply_temp_reset=True,
+            )
+
+            app = network_manager.add_device_to_network(
+                equipment=ahu, network_info=network_info, device_name=f"AHU-{ahu_name}"
+            )
+
+            if app:
+                all_ahus[ahu_name] = ahu
+                logger.info(
+                    f"    {ahu_name}: Created with {len(vav_list)} VAVs on network {network_info.network_number}"
+                )
+
+        # Create central plant equipment
+        central_plant = network_manager.get_central_plant_network(building_index)
+        if central_plant:
+            # Chillers
+            for chiller_name in building.chillers:
+                name = chiller_name if isinstance(chiller_name, str) else f"Chiller-{building_name}"
+                chiller = Chiller(
+                    name=name,
+                    cooling_type="water_cooled",
+                    capacity=500,
+                    design_cop=5.0,
+                    design_entering_condenser_temp=85,
+                    design_leaving_chilled_water_temp=44,
+                    min_part_load_ratio=0.1,
+                    design_chilled_water_flow=1000,
+                    design_condenser_water_flow=1200,
+                )
+                network_manager.add_device_to_network(
+                    equipment=chiller, network_info=central_plant, device_name=f"Chiller-{name}"
+                )
+                logger.info(f"    {name}: Chiller on network {central_plant.network_number}")
+
+            # Boilers
+            for boiler_name in building.boilers:
+                name = boiler_name if isinstance(boiler_name, str) else f"Boiler-{building_name}"
+                boiler = Boiler(
+                    name=name,
+                    fuel_type="gas",
+                    capacity=1000,
+                    design_efficiency=0.85,
+                    design_entering_water_temp=160,
+                    design_leaving_water_temp=180,
+                    min_part_load_ratio=0.2,
+                    design_hot_water_flow=100,
+                    condensing=True,
+                    turndown_ratio=5.0,
+                )
+                network_manager.add_device_to_network(
+                    equipment=boiler, network_info=central_plant, device_name=f"Boiler-{name}"
+                )
+                logger.info(f"    {name}: Boiler on network {central_plant.network_number}")
+
+    # Inject errors if configured
+    if error_injector:
+        logger.info("\nInjecting errors:")
+        injected = error_injector.apply_errors_to_network(network_manager)
+        logger.info(f"  Injected {len(injected)} error devices")
+
+    # Print network topology
+    network_manager.print_network_topology()
+
+    # Summary
+    summary = network_manager.get_network_summary()
+    logger.info(
+        f"\nSimulation ready with {len(campus.buildings)} buildings, "
+        f"{summary['total_networks']} networks, and {summary['total_devices']} devices"
+    )
+
+    # 24-hour simulation loop (same as brick mode)
+    outdoor_temps = {hour: 65 + 15 * math.sin(math.pi * (hour - 5) / 12) for hour in range(24)}
+    occupied_hours = [(8, 18)]
+    occupancy = 5
+    current_hour = 6
+    supply_air_temp = 55
+
+    logger.info("\nStarting simulation loop (1 hour per minute)...")
+    logger.info("Press Ctrl+C to stop\n")
+
+    try:
+        while True:
+            hour = current_hour % 24
+            outdoor_temp = outdoor_temps[hour] + random.uniform(-1, 1)
+            is_occupied = any(start <= hour < end for start, end in occupied_hours)
+            occupancy_count = occupancy if is_occupied else 0
+
+            update_tasks = []
+            for vav_name, vav in all_vavs.items():
+                vav.set_occupancy(occupancy_count)
+                vav.update(vav.zone_temp, supply_air_temp)
+
+                vav_effect = 0
+                if vav.mode == "cooling":
+                    vav_effect = vav.current_airflow / vav.max_airflow
+                elif vav.mode == "heating" and vav.has_reheat:
+                    vav_effect = -vav.reheat_valve_position
+
+                temp_change = vav.calculate_thermal_behavior(
+                    minutes=60,
+                    outdoor_temp=outdoor_temp,
+                    vav_cooling_effect=vav_effect,
+                    time_of_day=(hour, 0),
+                )
+
+                vav.zone_temp += temp_change
+                update_tasks.append(vav.update_bacnet_device())
+
+            for ahu_name, ahu in all_ahus.items():
+                zone_temps = {}
+                for vav in ahu_vav_map.get(ahu_name, []):
+                    zone_temps[vav.name] = vav.zone_temp
+                ahu.update(zone_temps=zone_temps, outdoor_temp=outdoor_temp)
+                update_tasks.append(ahu.update_bacnet_device())
+
+            if update_tasks:
+                await asyncio.gather(*update_tasks, return_exceptions=True)
+
+            avg_zone_temp = (
+                sum(v.zone_temp for v in all_vavs.values()) / len(all_vavs) if all_vavs else 72.0
+            )
+            cooling_count = sum(1 for v in all_vavs.values() if v.mode == "cooling")
+            heating_count = sum(1 for v in all_vavs.values() if v.mode == "heating")
+
+            logger.info(
+                f"Time: {hour:02d}:00 | Outdoor: {outdoor_temp:.1f}°F | "
+                f"Avg Zone: {avg_zone_temp:.1f}°F | "
+                f"Cooling: {cooling_count} | Heating: {heating_count} | "
+                f"Buildings: {len(campus.buildings)} | VAVs: {len(all_vavs)}"
+            )
+
+            current_hour += 1
+            await asyncio.sleep(60)
+
+    except asyncio.CancelledError:
+        logger.info("Simulation cancelled")
+
+
 async def main():
     """Main entry point."""
     logger.info("=" * 60)
@@ -462,19 +830,30 @@ async def main():
     # Log configuration
     bacnet_address = get_bacnet_address()
     simulation_mode = os.getenv("SIMULATION_MODE", "simple")
+    multi_building_mode = os.getenv("MULTI_BUILDING_MODE", "").lower() == "true"
+    inject_errors = os.getenv("INJECT_ERRORS", "").lower() == "true"
 
     logger.info("Configuration:")
     logger.info(f"  BACnet Address: {bacnet_address}")
     logger.info(f"  BACnet Port: {os.getenv('BACNET_PORT', '47808')}")
     logger.info(f"  Simulation Mode: {simulation_mode}")
+    logger.info(f"  Multi-Building Mode: {multi_building_mode}")
 
-    if simulation_mode == "brick":
+    if simulation_mode == "brick" or multi_building_mode:
         logger.info(f"  Brick TTL File: {os.getenv('BRICK_TTL_FILE', 'not set')}")
+
+    if inject_errors:
+        logger.info("  Error Injection: enabled")
+        logger.info(f"    Duplicate Device IDs: {os.getenv('DUPLICATE_DEVICE_IDS', '0')}")
+        logger.info(f"    Duplicate Networks: {os.getenv('DUPLICATE_NETWORK_NUMBERS', '0')}")
+        logger.info(f"    Duplicate Routers: {os.getenv('DUPLICATE_ROUTERS', '0')}")
 
     logger.info("=" * 60)
 
     try:
-        if simulation_mode == "brick":
+        if multi_building_mode:
+            await run_multi_building_simulation()
+        elif simulation_mode == "brick":
             await run_brick_simulation()
         else:
             await run_simple_simulation()

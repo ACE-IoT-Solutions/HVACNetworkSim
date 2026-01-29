@@ -1,11 +1,12 @@
 """Brick schema parser for extracting building topology.
 
 This module parses Brick TTL files to extract equipment relationships
-for building the simulation model.
+for building the simulation model. Supports single-building and
+multi-building (campus) configurations.
 """
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 try:
     from rdflib import Graph, Namespace
@@ -18,6 +19,8 @@ except ImportError:
     Namespace = None  # type: ignore
     RDF = None  # type: ignore
     RDFS = None  # type: ignore
+
+from src.brick.campus import BuildingStructure, CampusStructure
 
 
 class BrickParser:
@@ -317,3 +320,162 @@ class BrickParser:
             "chillers": chiller_info,
             "boilers": boiler_info,
         }
+
+    def extract_all_buildings(self) -> CampusStructure:
+        """Extract all buildings from the BRICK schema as a CampusStructure.
+
+        This method supports multi-building TTL files where each building
+        is represented as a brick:Building instance. Equipment is associated
+        with buildings via brick:isPartOf relationships or by namespace.
+
+        Returns:
+            CampusStructure containing all buildings and their equipment
+        """
+        campus = CampusStructure()
+
+        # Find all building instances
+        buildings_found: list[tuple[Any, str, Optional[int]]] = []
+
+        for building in self.g.subjects(RDF.type, self.BRICK.Building):
+            building_id = str(building).split("#")[-1]
+
+            # Get building area
+            area = None
+            for area_node in self.g.objects(building, self.BRICK.area):
+                for value in self.g.objects(area_node, self.BRICK.value):
+                    match = re.search(r"(\d+)", str(value))
+                    if match:
+                        area = int(match.group(1))
+                        break
+
+            buildings_found.append((building, building_id, area))
+
+        # If no buildings found, create a single building from all equipment
+        if not buildings_found:
+            equipment = self.extract_all_equipment()
+            building = BuildingStructure(
+                name=equipment.get("building", {}).get("name", "Building1"),
+                area=equipment.get("building", {}).get("area"),
+                ahus=equipment.get("ahus", {}),
+                vavs=equipment.get("vavs", {}),
+                zones=equipment.get("zones", {}),
+                chillers=equipment.get("chillers", {}),
+                boilers=equipment.get("boilers", {}),
+            )
+            campus.add_building(building)
+            return campus
+
+        # Extract equipment for each building
+        all_ahus = self.extract_ahu_info()
+        all_vavs = self.extract_vav_info()
+        all_zones = self.extract_zone_info()
+        all_chillers = self.extract_chiller_info()
+        all_boilers = self.extract_boiler_info()
+
+        # Build mapping of equipment to buildings via isPartOf
+        equipment_to_building: dict[str, str] = {}
+
+        for building_ref, building_id, _ in buildings_found:
+            # Find equipment that is part of this building
+            for equip in self.g.subjects(self.BRICK.isPartOf, building_ref):
+                equip_id = str(equip).split("#")[-1]
+                equipment_to_building[equip_id] = building_id
+
+            # Also check hasPart relationship (inverse)
+            for equip in self.g.objects(building_ref, self.BRICK.hasPart):
+                equip_id = str(equip).split("#")[-1]
+                equipment_to_building[equip_id] = building_id
+
+        # Determine if this is a single-building scenario
+        # In single-building mode, all equipment belongs to that building
+        is_single_building = len(buildings_found) == 1
+
+        # Create BuildingStructure for each building
+        for building_ref, building_id, area in buildings_found:
+            building_ahus: dict[str, dict[str, Any]] = {}
+            building_vavs: dict[str, dict[str, Any]] = {}
+            building_zones: dict[str, dict[str, Any]] = {}
+            building_chillers: dict[str, dict[str, Any]] = {}
+            building_boilers: dict[str, dict[str, Any]] = {}
+
+            # Assign equipment to this building based on isPartOf or namespace
+            for ahu_id, ahu_data in all_ahus.items():
+                if is_single_building or self._equipment_belongs_to_building(
+                    ahu_id, building_id, equipment_to_building
+                ):
+                    building_ahus[ahu_id] = ahu_data
+
+            for vav_id, vav_data in all_vavs.items():
+                if is_single_building or self._equipment_belongs_to_building(
+                    vav_id, building_id, equipment_to_building
+                ):
+                    building_vavs[vav_id] = vav_data
+
+            for zone_id, zone_data in all_zones.items():
+                if is_single_building or self._equipment_belongs_to_building(
+                    zone_id, building_id, equipment_to_building
+                ):
+                    building_zones[zone_id] = zone_data
+
+            for chiller_id, chiller_data in all_chillers.items():
+                if is_single_building or self._equipment_belongs_to_building(
+                    chiller_id, building_id, equipment_to_building
+                ):
+                    building_chillers[chiller_id] = chiller_data
+
+            for boiler_id, boiler_data in all_boilers.items():
+                if is_single_building or self._equipment_belongs_to_building(
+                    boiler_id, building_id, equipment_to_building
+                ):
+                    building_boilers[boiler_id] = boiler_data
+
+            building_struct = BuildingStructure(
+                name=building_id,
+                area=area,
+                ahus=building_ahus,
+                vavs=building_vavs,
+                zones=building_zones,
+                chillers=building_chillers,
+                boilers=building_boilers,
+            )
+            campus.add_building(building_struct)
+
+        return campus
+
+    def _equipment_belongs_to_building(
+        self,
+        equipment_id: str,
+        building_id: str,
+        equipment_to_building: dict[str, str],
+    ) -> bool:
+        """Determine if equipment belongs to a building.
+
+        Uses explicit isPartOf relationships first, then falls back to
+        namespace/naming convention heuristics.
+
+        Args:
+            equipment_id: ID of the equipment
+            building_id: ID of the building
+            equipment_to_building: Mapping from explicit isPartOf relationships
+
+        Returns:
+            True if equipment belongs to building
+        """
+        # Check explicit mapping first
+        if equipment_id in equipment_to_building:
+            return equipment_to_building[equipment_id] == building_id
+
+        # Fall back to namespace/naming convention
+        # Equipment IDs often contain the building ID as a prefix
+        building_lower = building_id.lower()
+        equip_lower = equipment_id.lower()
+
+        # Check if building ID is a prefix or contained in equipment ID
+        if equip_lower.startswith(building_lower):
+            return True
+
+        # Check if building ID is contained within equipment ID (e.g., "AHU_bldg1_01")
+        if building_lower in equip_lower:
+            return True
+
+        return False
