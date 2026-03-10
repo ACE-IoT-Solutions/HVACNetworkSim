@@ -96,11 +96,26 @@ class BACnetNetworkManager:
     BUILDING_CENTRAL_PLANT_OFFSET = 1  # Central plant at N*1000 + 1
     BUILDING_AHU_BASE_OFFSET = 100  # AHUs start at N*1000 + 100
 
-    def __init__(self, multi_building_mode: bool = False):
+    # Device ID range per building for campus mode (1000 IDs per building)
+    BUILDING_DEVICE_ID_RANGE = 1000
+
+    def __init__(
+        self,
+        multi_building_mode: bool = False,
+        device_id_start: int = 1000,
+        network_number_base: int = 0,
+    ):
         """Initialize the network manager.
 
         Args:
             multi_building_mode: If True, use building-indexed network numbering
+            device_id_start: Starting device ID for this manager's devices.
+                In campus mode each building should use a unique range
+                (e.g., building 1 starts at 1000, building 2 at 2000).
+            network_number_base: Base offset for all network numbers.
+                In campus mode each building should use a unique base
+                (e.g., building 1 = 1000, building 2 = 2000) so network
+                numbers are globally unique across the BACnet internetwork.
         """
         if not BACPYPES_AVAILABLE:
             raise ImportError("BACpypes3 is required for BACnet network management")
@@ -108,9 +123,10 @@ class BACnetNetworkManager:
         self.networks: Dict[int, NetworkInfo] = {}
         self.all_devices: List[Any] = []
         self.router_app: Optional[Any] = None
-        self._next_device_id = 1000
+        self._next_device_id = device_id_start
         self._next_mac_counter: Dict[int, int] = {}  # Per-network MAC counter
         self.multi_building_mode = multi_building_mode
+        self.network_number_base = network_number_base
         self.buildings: Dict[str, int] = {}  # Building name -> building index
 
     def _get_next_mac(self, network_number: int) -> str:
@@ -178,7 +194,7 @@ class BACnetNetworkManager:
             network_number = base + self.BUILDING_CENTRAL_PLANT_OFFSET
             network_name = f"central-plant-bldg{building_index + 1}"
         else:
-            network_number = self.CENTRAL_PLANT_NETWORK
+            network_number = self.network_number_base + self.CENTRAL_PLANT_NETWORK
             network_name = "central-plant"
 
         print(f"Creating Central Plant network (Network {network_number})")
@@ -221,7 +237,7 @@ class BACnetNetworkManager:
             network_number = base + self.BUILDING_AHU_BASE_OFFSET + (ahu_index * 100)
             network_name = f"ahu-{ahu_name.lower()}-bldg{building_index + 1}"
         else:
-            network_number = self.AHU_NETWORK_BASE + (ahu_index * 100)
+            network_number = self.network_number_base + self.AHU_NETWORK_BASE + (ahu_index * 100)
             network_name = f"ahu-{ahu_name.lower()}"
 
         print(f"Creating AHU network for {ahu_name} (Network {network_number})")
@@ -317,7 +333,9 @@ class BACnetNetworkManager:
                 "ip-subnet-mask": subnet_mask,
                 "link-speed": 0.0,
                 "mac-address": f"{ip_addr}:{bacnet_port}",
-                "network-number": self.BACNET_IP_NETWORK,  # External BACnet/IP network
+                "network-number": self.network_number_base
+                if self.network_number_base
+                else self.BACNET_IP_NETWORK,
                 "network-number-quality": "configured",
                 "network-type": "ipv4",
                 "object-identifier": "network-port,1",
@@ -329,7 +347,10 @@ class BACnetNetworkManager:
             },
         ]
 
-        logger.info(f"    Port 1: BACnet/IP (Network {self.BACNET_IP_NETWORK})")
+        ip_network_number = (
+            self.network_number_base if self.network_number_base else self.BACNET_IP_NETWORK
+        )
+        logger.info(f"    Port 1: BACnet/IP (Network {ip_network_number})")
 
         # Add a virtual network port for each internal network
         port_id = 2
@@ -446,7 +467,7 @@ class BACnetNetworkManager:
             base = self._get_building_network_base(building_index)
             network_number = base + self.BUILDING_CENTRAL_PLANT_OFFSET
             return self.networks.get(network_number)
-        return self.networks.get(self.CENTRAL_PLANT_NETWORK)
+        return self.networks.get(self.network_number_base + self.CENTRAL_PLANT_NETWORK)
 
     def get_networks_for_building(self, building_name: str) -> List[NetworkInfo]:
         """Get all networks associated with a building.
@@ -505,6 +526,47 @@ class BACnetNetworkManager:
         total_devices = sum(len(n.devices) for n in self.networks.values())
         print(f"Total: {len(self.networks)} networks, {total_devices} devices")
         print("=" * 60 + "\n")
+
+    def print_device_table(self, bacnet_address: str = ""):
+        """Print a table of all BACnet devices with their addresses.
+
+        Args:
+            bacnet_address: The container's BACnet/IP address (e.g., "10.1.0.10/24")
+        """
+        ip = bacnet_address.split("/")[0] if bacnet_address else "N/A"
+
+        # Collect rows
+        rows: list[tuple[str, str, str, str, str]] = []
+        for net_num in sorted(self.networks.keys()):
+            net = self.networks[net_num]
+            building = net.building_name or ""
+            for device in net.devices:
+                dev_name = getattr(device, "name", str(device.device_object.objectIdentifier))
+                dev_id = str(device.device_object.objectIdentifier[1])
+                net_str = str(net.network_number)
+                rows.append((dev_id, dev_name, net_str, ip, building))
+
+        if not rows:
+            return
+
+        # Column widths
+        headers = ("Device ID", "Name", "Network", "BACnet/IP", "Building")
+        widths = [len(h) for h in headers]
+        for row in rows:
+            for i, val in enumerate(row):
+                widths[i] = max(widths[i], len(val))
+
+        fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+        sep = "  ".join("-" * w for w in widths)
+
+        print("\nBACnet Device Table")
+        print("=" * (sum(widths) + 2 * (len(widths) - 1)))
+        print(fmt.format(*headers))
+        print(sep)
+        for row in rows:
+            print(fmt.format(*row))
+        print("=" * (sum(widths) + 2 * (len(widths) - 1)))
+        print(f"{len(rows)} devices\n")
 
     def get_all_devices(self) -> List[Any]:
         """Get all devices across all networks."""

@@ -71,3 +71,7 @@ coverage/
 
 # Output directory
 output/
+
+# Generated campus files
+docker-compose.campus.yml
+campus/configs/

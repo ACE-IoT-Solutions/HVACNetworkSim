@@ -30,9 +30,11 @@ from pathlib import Path
 
 # Container configuration
 IMAGE_NAME = "hvac-simulator"
+BBMD_IMAGE_NAME = "ace-acl-bbmd"
 CONTAINER_NAME = "hvac-bacnet-sim"
 DEFAULT_PORT = 47808
 BRICK_MOUNT_PATH = "/app/brick_schemas"
+CAMPUS_COMPOSE_FILE = "docker-compose.campus.yml"
 
 
 def find_brick_files(search_dir: Path = None) -> list[Path]:
@@ -246,6 +248,180 @@ def run_simulation(
         return 0
 
 
+def check_compose_runtime(runtime: str) -> str:
+    """Check for podman-compose or docker-compose."""
+    compose_cmd = f"{runtime}-compose"
+    try:
+        result = subprocess.run([compose_cmd, "version"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            return compose_cmd
+    except (subprocess.SubprocessError, FileNotFoundError):
+        pass
+
+    # Try docker compose (v2 plugin)
+    if runtime == "docker":
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "version"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                return "docker compose"
+        except (subprocess.SubprocessError, FileNotFoundError):
+            pass
+
+    print(f"Error: {compose_cmd} not found.", file=sys.stderr)
+    print(f"Please install {compose_cmd} to use campus mode.", file=sys.stderr)
+    sys.exit(1)
+
+
+def build_bbmd_image(runtime: str, force: bool = False) -> bool:
+    """Build the BBMD image from the sibling ace-acl-bbmd project."""
+    if not force and image_exists(runtime, BBMD_IMAGE_NAME):
+        return True
+
+    script_dir = Path(__file__).parent
+    bbmd_dir = script_dir.parent / "ace-acl-bbmd"
+
+    if not bbmd_dir.exists():
+        print(f"Error: BBMD project not found at {bbmd_dir}", file=sys.stderr)
+        print("Clone it with: git clone <ace-acl-bbmd-repo> ../ace-acl-bbmd", file=sys.stderr)
+        return False
+
+    print(f"Building {BBMD_IMAGE_NAME} image from {bbmd_dir}...")
+
+    # The ace-acl-bbmd project keeps its Dockerfile at integration_testing/Dockerfile.bbmd
+    # with build context at project root. We patch it to also copy README.md (needed by hatchling).
+    dockerfile = bbmd_dir / "integration_testing" / "Dockerfile.bbmd"
+    if dockerfile.exists():
+        import tempfile
+
+        patched_content = dockerfile.read_text().replace(
+            "COPY pyproject.toml uv.lock ./",
+            "COPY pyproject.toml uv.lock README.md ./",
+        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".Dockerfile", delete=False) as f:
+            f.write(patched_content)
+            patched_path = f.name
+        try:
+            result = subprocess.run(
+                [runtime, "build", "-f", patched_path, "-t", BBMD_IMAGE_NAME, str(bbmd_dir)],
+                cwd=bbmd_dir,
+            )
+        finally:
+            Path(patched_path).unlink(missing_ok=True)
+    else:
+        result = subprocess.run(
+            [runtime, "build", "-t", BBMD_IMAGE_NAME, str(bbmd_dir)], cwd=bbmd_dir
+        )
+
+    if result.returncode != 0:
+        print(f"Error: Failed to build {BBMD_IMAGE_NAME} image", file=sys.stderr)
+        return False
+
+    print(f"Image {BBMD_IMAGE_NAME} built successfully.")
+    return True
+
+
+def run_campus_generate(ttl_file: str) -> bool:
+    """Run the campus generator script."""
+    script_dir = Path(__file__).parent
+    generator = script_dir / "campus" / "generate_campus.py"
+
+    if not generator.exists():
+        print(f"Error: Campus generator not found: {generator}", file=sys.stderr)
+        return False
+
+    result = subprocess.run(
+        [sys.executable, str(generator), ttl_file],
+        cwd=script_dir,
+    )
+    return result.returncode == 0
+
+
+def run_campus(runtime: str, ttl_file: str, build: bool = False) -> int:
+    """Generate and start a campus simulation."""
+    script_dir = Path(__file__).parent
+    compose_file = script_dir / CAMPUS_COMPOSE_FILE
+
+    # Generate compose and configs
+    print("Generating campus configuration...")
+    if not run_campus_generate(ttl_file):
+        return 1
+
+    if not compose_file.exists():
+        print(f"Error: {compose_file} was not generated", file=sys.stderr)
+        return 1
+
+    # Build images
+    if not build_image(runtime, force=build):
+        return 1
+    if not build_bbmd_image(runtime, force=build):
+        return 1
+
+    # Find compose runtime
+    compose_cmd = check_compose_runtime(runtime)
+
+    # Start the campus
+    print("\nStarting campus simulation...")
+    if " " in compose_cmd:
+        # docker compose (plugin form)
+        parts = compose_cmd.split()
+        cmd = parts + ["-f", str(compose_file), "up", "-d"]
+    else:
+        cmd = [compose_cmd, "-f", str(compose_file), "up", "-d"]
+
+    result = subprocess.run(cmd, cwd=script_dir)
+    if result.returncode != 0:
+        return result.returncode
+
+    print("\nCampus simulation started. Use './hvac-sim --campus-logs' to view logs.")
+    print("Use './hvac-sim --campus-stop' to stop.")
+    return 0
+
+
+def stop_campus(runtime: str) -> int:
+    """Stop the campus simulation."""
+    script_dir = Path(__file__).parent
+    compose_file = script_dir / CAMPUS_COMPOSE_FILE
+
+    if not compose_file.exists():
+        print(f"No campus compose file found at {compose_file}", file=sys.stderr)
+        return 1
+
+    compose_cmd = check_compose_runtime(runtime)
+    if " " in compose_cmd:
+        parts = compose_cmd.split()
+        cmd = parts + ["-f", str(compose_file), "down"]
+    else:
+        cmd = [compose_cmd, "-f", str(compose_file), "down"]
+
+    result = subprocess.run(cmd, cwd=script_dir)
+    return result.returncode
+
+
+def campus_logs(runtime: str) -> int:
+    """Show campus simulation logs."""
+    script_dir = Path(__file__).parent
+    compose_file = script_dir / CAMPUS_COMPOSE_FILE
+
+    if not compose_file.exists():
+        print(f"No campus compose file found at {compose_file}", file=sys.stderr)
+        return 1
+
+    compose_cmd = check_compose_runtime(runtime)
+    if " " in compose_cmd:
+        parts = compose_cmd.split()
+        cmd = parts + ["-f", str(compose_file), "logs", "-f"]
+    else:
+        cmd = [compose_cmd, "-f", str(compose_file), "logs", "-f"]
+
+    try:
+        result = subprocess.run(cmd, cwd=script_dir)
+        return result.returncode
+    except KeyboardInterrupt:
+        return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run the HVAC BACnet Simulator in a container",
@@ -343,6 +519,25 @@ Examples:
         help="Inject N duplicate routers (requires --inject-errors)",
     )
 
+    # Campus mode options
+    parser.add_argument(
+        "--campus",
+        metavar="TTL_FILE",
+        help="Run multi-container campus simulation from a campus TTL file",
+    )
+
+    parser.add_argument(
+        "--campus-stop",
+        action="store_true",
+        help="Stop the running campus simulation",
+    )
+
+    parser.add_argument(
+        "--campus-logs",
+        action="store_true",
+        help="Show logs from the campus simulation",
+    )
+
     args = parser.parse_args()
 
     # Handle --list
@@ -353,6 +548,16 @@ Examples:
     # Detect container runtime
     runtime = check_container_runtime()
     print(f"Using container runtime: {runtime}")
+
+    # Handle campus commands
+    if args.campus_stop:
+        return stop_campus(runtime)
+
+    if args.campus_logs:
+        return campus_logs(runtime)
+
+    if args.campus:
+        return run_campus(runtime, args.campus, build=args.build)
 
     # Handle --stop
     if args.stop:

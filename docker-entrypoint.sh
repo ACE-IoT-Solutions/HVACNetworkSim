@@ -44,6 +44,24 @@ BACNET_PORT="${BACNET_PORT:-47808}"
 export BACNET_PORT
 echo "BACnet Port: $BACNET_PORT"
 
+# Handle BUILDING_NAME for campus multi-container mode
+if [ -n "$BUILDING_NAME" ]; then
+    echo "Building Name: $BUILDING_NAME (campus multi-container mode)"
+    export BUILDING_NAME
+fi
+
+# Set up cross-subnet routes for campus mode
+# CAMPUS_ROUTES format: "10.2.0.0/24:10.1.0.254,10.3.0.0/24:10.1.0.254"
+if [ -n "$CAMPUS_ROUTES" ]; then
+    echo "Setting up campus cross-subnet routes..."
+    for route in $(echo "$CAMPUS_ROUTES" | tr ',' ' '); do
+        subnet=$(echo "$route" | cut -d: -f1)
+        gateway=$(echo "$route" | cut -d: -f2)
+        echo "  Adding route: $subnet via $gateway"
+        ip route add "$subnet" via "$gateway" 2>/dev/null || echo "  Warning: Failed to add route $subnet via $gateway"
+    done
+fi
+
 # Handle TTL file for brick-based simulation
 if [ -n "$BRICK_TTL_FILE" ]; then
     if [ -f "$BRICK_TTL_FILE" ]; then

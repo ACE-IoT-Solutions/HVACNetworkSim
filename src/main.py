@@ -174,47 +174,62 @@ async def run_simple_simulation():
         logger.exception(f"Error in simulation: {e}")
 
 
-async def run_brick_simulation():
+async def run_brick_simulation(
+    building_structure: dict = None, device_id_start: int = 1000, network_number_base: int = 0
+):
     """
     Run a Brick schema-based simulation with routed BACnet networks.
 
     This creates a realistic building network topology:
     - Each AHU has its own BACnet network with its VAVs
     - Central plant equipment on a separate network
+
+    Args:
+        building_structure: Optional pre-parsed building structure dict.
+            If not provided, reads from BRICK_TTL_FILE env var.
+        device_id_start: Starting device ID for this building's devices.
+            Each building in a campus must use a unique range to ensure
+            globally unique device IDs across the BACnet internetwork.
+        network_number_base: Base offset for network numbers.
+            Each building in a campus must use a unique base to ensure
+            globally unique network numbers (e.g., building 1 = 1000, building 2 = 2000).
     """
-    ttl_file = os.getenv("BRICK_TTL_FILE")
+    if building_structure is None:
+        ttl_file = os.getenv("BRICK_TTL_FILE")
 
-    if not ttl_file:
-        logger.error("BRICK_TTL_FILE environment variable not set")
-        sys.exit(1)
+        if not ttl_file:
+            logger.error("BRICK_TTL_FILE environment variable not set")
+            sys.exit(1)
 
-    if not os.path.exists(ttl_file):
-        logger.error(f"Brick TTL file not found: {ttl_file}")
-        sys.exit(1)
+        if not os.path.exists(ttl_file):
+            logger.error(f"Brick TTL file not found: {ttl_file}")
+            sys.exit(1)
 
-    logger.info("Starting Brick-based simulation with routed networks")
-    logger.info(f"  TTL file: {ttl_file}")
+        logger.info("Starting Brick-based simulation with routed networks")
+        logger.info(f"  TTL file: {ttl_file}")
 
-    try:
-        import rdflib  # noqa: F401 - availability check
+        try:
+            import rdflib  # noqa: F401 - availability check
 
-        del rdflib
-    except ImportError:
-        logger.error("rdflib is required for Brick-based simulation")
-        logger.error("Install with: pip install rdflib")
-        sys.exit(1)
+            del rdflib
+        except ImportError:
+            logger.error("rdflib is required for Brick-based simulation")
+            logger.error("Install with: pip install rdflib")
+            sys.exit(1)
 
-    # Import the BrickParser
-    try:
-        from src.brick.parser import BrickParser
-    except ImportError as e:
-        logger.error(f"Failed to import BrickParser: {e}")
-        sys.exit(1)
+        # Import the BrickParser
+        try:
+            from src.brick.parser import BrickParser
+        except ImportError as e:
+            logger.error(f"Failed to import BrickParser: {e}")
+            sys.exit(1)
 
-    # Parse the Brick schema
-    logger.info(f"Parsing Brick schema: {ttl_file}")
-    parser = BrickParser(ttl_file)
-    building_structure = parser.extract_all_equipment()
+        # Parse the Brick schema
+        logger.info(f"Parsing Brick schema: {ttl_file}")
+        parser = BrickParser(ttl_file)
+        building_structure = parser.extract_all_equipment()
+    else:
+        logger.info("Starting Brick-based simulation with provided building structure")
 
     building_name = building_structure.get("building", {}).get("name", "Unknown")
     ahus = building_structure.get("ahus", {})
@@ -232,18 +247,24 @@ async def run_brick_simulation():
 
     # Create the routed network topology
     logger.info("\nCreating routed BACnet network topology...")
-    network_manager = create_building_networks_from_brick(building_structure)
+    network_manager = BACnetNetworkManager(
+        device_id_start=device_id_start, network_number_base=network_number_base
+    )
+    create_building_networks_from_brick(building_structure, network_manager=network_manager)
 
     # Get BACnet address for the router
     bacnet_address = get_bacnet_address()
     bacnet_port = int(os.getenv("BACNET_PORT", "47808"))
 
     # Create the IP-to-VLAN router to bridge external traffic to internal VLANs
+    # Router device ID is one below the device_id_start for this building
+    # (e.g., building 1 = 999, building 2 = 1999)
+    router_device_id = device_id_start - 1 if device_id_start > 0 else 999
     logger.info("\nCreating IP-to-VLAN router...")
     router = network_manager.create_ip_to_vlan_router(
         ip_address=bacnet_address,
         bacnet_port=bacnet_port,
-        device_id=999,
+        device_id=router_device_id,
         device_name="HVAC-Building-Router",
     )
 
@@ -385,8 +406,9 @@ async def run_brick_simulation():
                 device_name=f"Chiller-{chiller_name}",
             )
 
-    # Print network topology
+    # Print network topology and device table
     network_manager.print_network_topology()
+    network_manager.print_device_table(bacnet_address=bacnet_address)
 
     # Summary
     summary = network_manager.get_network_summary()
@@ -821,6 +843,92 @@ async def run_multi_building_simulation():
         logger.info("Simulation cancelled")
 
 
+async def run_single_building_from_campus():
+    """
+    Run a single building extracted from a campus TTL file.
+
+    Reads BUILDING_NAME and BRICK_TTL_FILE env vars, parses the campus TTL,
+    extracts the matching BuildingStructure, converts it to the dict format
+    expected by run_brick_simulation(), and delegates to it.
+
+    This is used when each building runs in its own container as part of
+    a multi-container campus simulation with real podman networks and BBMDs.
+    """
+    building_name = os.getenv("BUILDING_NAME")
+    ttl_file = os.getenv("BRICK_TTL_FILE")
+
+    if not building_name:
+        logger.error("BUILDING_NAME environment variable not set")
+        sys.exit(1)
+
+    if not ttl_file:
+        logger.error("BRICK_TTL_FILE environment variable not set")
+        sys.exit(1)
+
+    if not os.path.exists(ttl_file):
+        logger.error(f"Brick TTL file not found: {ttl_file}")
+        sys.exit(1)
+
+    logger.info(f"Starting single-building simulation for: {building_name}")
+    logger.info(f"  TTL file: {ttl_file}")
+
+    try:
+        import rdflib  # noqa: F401
+
+        del rdflib
+    except ImportError:
+        logger.error("rdflib is required for campus simulation")
+        sys.exit(1)
+
+    from src.brick.parser import BrickParser
+
+    # Parse the campus TTL and extract all buildings
+    parser = BrickParser(ttl_file)
+    campus = parser.extract_all_buildings()
+
+    # Find the matching building
+    building = campus.get_building(building_name)
+    if not building:
+        available = list(campus.buildings.keys())
+        logger.error(f"Building '{building_name}' not found in TTL file")
+        logger.error(f"  Available buildings: {available}")
+        sys.exit(1)
+
+    logger.info(f"Found building: {building.name}")
+    logger.info(f"  AHUs: {len(building.ahus)}")
+    logger.info(f"  VAVs: {len(building.vavs)}")
+    logger.info(f"  Zones: {len(building.zones)}")
+    logger.info(f"  Chillers: {len(building.chillers)}")
+    logger.info(f"  Boilers: {len(building.boilers)}")
+
+    # Compute building index (1-based) for unique device ID and network number ranges.
+    # BACnet requires globally unique device IDs AND network numbers across the internetwork.
+    # Each building gets a range of 1000: building 1 = 1000-1999, building 2 = 2000-2999, etc.
+    building_names = list(campus.buildings.keys())
+    building_index = building_names.index(building_name) + 1  # 1-based
+    device_id_start = building_index * BACnetNetworkManager.BUILDING_DEVICE_ID_RANGE
+    network_number_base = building_index * BACnetNetworkManager.BUILDING_NETWORK_RANGE
+    logger.info(f"  Building index: {building_index}")
+    logger.info(f"  Device ID range: {device_id_start}-{device_id_start + 999}")
+    logger.info(f"  Network number base: {network_number_base}")
+
+    # Convert BuildingStructure to the dict format expected by run_brick_simulation()
+    building_dict = {
+        "building": {"name": building.name, "area": building.area},
+        "ahus": building.ahus,
+        "vavs": building.vavs,
+        "zones": building.zones,
+        "chillers": building.chillers,
+        "boilers": building.boilers,
+    }
+
+    await run_brick_simulation(
+        building_structure=building_dict,
+        device_id_start=device_id_start,
+        network_number_base=network_number_base,
+    )
+
+
 async def main():
     """Main entry point."""
     logger.info("=" * 60)
@@ -832,14 +940,17 @@ async def main():
     simulation_mode = os.getenv("SIMULATION_MODE", "simple")
     multi_building_mode = os.getenv("MULTI_BUILDING_MODE", "").lower() == "true"
     inject_errors = os.getenv("INJECT_ERRORS", "").lower() == "true"
+    building_name = os.getenv("BUILDING_NAME", "")
 
     logger.info("Configuration:")
     logger.info(f"  BACnet Address: {bacnet_address}")
     logger.info(f"  BACnet Port: {os.getenv('BACNET_PORT', '47808')}")
     logger.info(f"  Simulation Mode: {simulation_mode}")
     logger.info(f"  Multi-Building Mode: {multi_building_mode}")
+    if building_name:
+        logger.info(f"  Building Name: {building_name}")
 
-    if simulation_mode == "brick" or multi_building_mode:
+    if simulation_mode == "brick" or multi_building_mode or building_name:
         logger.info(f"  Brick TTL File: {os.getenv('BRICK_TTL_FILE', 'not set')}")
 
     if inject_errors:
@@ -851,7 +962,9 @@ async def main():
     logger.info("=" * 60)
 
     try:
-        if multi_building_mode:
+        if building_name and simulation_mode == "brick":
+            await run_single_building_from_campus()
+        elif multi_building_mode:
             await run_multi_building_simulation()
         elif simulation_mode == "brick":
             await run_brick_simulation()
