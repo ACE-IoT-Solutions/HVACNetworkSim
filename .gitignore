@@ -14,7 +14,6 @@ __pycache__/
 env/
 venv/
 Pipfile
-Pipfile.lock
 
 # macOS system files
 .DS_Store
@@ -52,9 +51,12 @@ coverage/
 .nyc_output/
 
 # Miscellaneous
-*.lock
 *.orig
 *.png
+
+# Lock files (except uv.lock which ensures reproducible builds)
+Pipfile.lock
+!uv.lock
 
 # Python version management
 .python-version

@@ -284,7 +284,14 @@ def build_bbmd_image(runtime: str, force: bool = False) -> bool:
 
     if not bbmd_dir.exists():
         print(f"Error: BBMD project not found at {bbmd_dir}", file=sys.stderr)
-        print("Clone it with: git clone <ace-acl-bbmd-repo> ../ace-acl-bbmd", file=sys.stderr)
+        print(
+            "Campus mode requires the ace-acl-bbmd project as a sibling directory.",
+            file=sys.stderr,
+        )
+        print(
+            "Clone it with: git clone git@github.com:ACE-IoT-Solutions/ace-acl-bbmd ../ace-acl-bbmd",
+            file=sys.stderr,
+        )
         return False
 
     print(f"Building {BBMD_IMAGE_NAME} image from {bbmd_dir}...")

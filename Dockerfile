@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml README.md ./
+# Copy project files (uv.lock ensures reproducible dependency resolution)
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 COPY examples/ ./examples/
 COPY data/ ./data/
