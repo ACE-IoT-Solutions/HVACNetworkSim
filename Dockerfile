@@ -27,7 +27,7 @@ RUN chmod +x /docker-entrypoint.sh
 RUN mkdir -p /app/configs /app/brick_schemas
 
 # Install Python dependencies
-RUN uv sync
+RUN uv sync --no-dev
 
 # Expose BACnet port
 EXPOSE 47808/udp

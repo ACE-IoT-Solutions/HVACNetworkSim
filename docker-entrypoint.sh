@@ -101,17 +101,17 @@ case "$SIMULATION_MODE" in
             exit 1
         fi
         echo "Starting Brick-based simulation with $BRICK_TTL_FILE..."
-        exec uv run python -u /app/src/main.py
+        exec /app/.venv/bin/python -u /app/src/main.py
         ;;
     simple)
         echo "Starting simple VAV simulation..."
-        exec uv run python -u /app/src/main.py
+        exec /app/.venv/bin/python -u /app/src/main.py
         ;;
     custom)
         # Allow running a custom script
         if [ -n "$CUSTOM_SCRIPT" ] && [ -f "$CUSTOM_SCRIPT" ]; then
             echo "Running custom script: $CUSTOM_SCRIPT"
-            exec uv run python -u "$CUSTOM_SCRIPT"
+            exec /app/.venv/bin/python -u "$CUSTOM_SCRIPT"
         else
             echo "Error: CUSTOM_SCRIPT not set or file not found"
             exit 1

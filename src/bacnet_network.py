@@ -142,7 +142,7 @@ class BACnetNetworkManager:
         self._next_mac_counter[network_number] += 1
 
         # Format as hex with proper padding
-        return f"0x{mac_num:04x}"
+        return f"0x{mac_num:02x}"
 
     def _get_next_device_id(self) -> int:
         """Get the next available device ID."""
