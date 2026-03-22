@@ -73,7 +73,13 @@ def generate_bbmd_config(building_index: int, num_buildings: int) -> str:
             bdt_lines.append(f'  - "{peer_ip}/32:47808"')  # Peer entry with host mask (unicast)
     bdt_entries = "\n".join(bdt_lines)
 
+    # BBMD device ID must be unique across the BACnet internetwork.
+    # Router for building N is at N*1000-1 (999, 1999, ...), equipment starts at N*1000.
+    # Place BBMD at N*1000-2 (998, 1998, ...) to avoid collisions.
+    bbmd_device_id = building_index * 1000 - 2
+
     return f"""bbmd_address: "{building_ip}/24:47808"
+device_id: {bbmd_device_id}
 bdt_entries:
 {bdt_entries}
 accept_foreign_devices: true
