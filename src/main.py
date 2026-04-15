@@ -471,6 +471,10 @@ async def run_brick_simulation(
             if update_tasks:
                 await asyncio.gather(*update_tasks, return_exceptions=True)
 
+            # Update router metric points
+            if hasattr(network_manager, "router_metrics"):
+                network_manager.router_metrics.update_points()
+
             # Log summary every hour
             avg_zone_temp = (
                 sum(v.zone_temp for v in all_vavs.values()) / len(all_vavs) if all_vavs else 72.0

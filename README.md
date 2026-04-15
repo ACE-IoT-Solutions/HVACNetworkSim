@@ -101,13 +101,26 @@ Each building gets a dedicated range of 1000 network numbers:
 
 ### Running Multi-Building Simulations
 
+**Single-container mode** runs all buildings in one process (simulated BBMDs):
+
 ```bash
-# Small 2-building demo
 ./hvac-sim --multi-building examples/multi_building_campus.ttl
+```
 
-# Large campus (5 buildings + central plant, 100+ devices)
-./hvac-sim --multi-building examples/large_campus.ttl
+**Multi-container campus mode** runs each building in its own container with real IP subnets and external [ace-acl-bbmd](https://github.com/ACE-IoT-Solutions/ace-acl-bbmd) instances for cross-building BACnet routing:
 
+```bash
+# Generate compose file, build images, and start the campus
+./hvac-sim --campus examples/multi_building_campus.ttl
+
+# View logs / stop
+./hvac-sim --campus-logs
+./hvac-sim --campus-stop
+```
+
+Campus mode requires the `ace-acl-bbmd` project as a sibling directory. The build patches its Dockerfile to use the `uv` base image and adds `--network=host` to work around Podman's default build isolation.
+
+```bash
 # With error injection for training
 ./hvac-sim --multi-building --inject-errors --duplicate-ids 5 examples/large_campus.ttl
 ```
@@ -291,7 +304,8 @@ src/
 ├── bacnet/                  # BACnet integration
 │   ├── device.py            # Device management
 │   ├── mixin.py             # Application mixin
-│   ├── points.py            # Point creation
+│   ├── points.py            # Point creation & unit mapping
+│   ├── router_metrics.py    # Router diagnostic instrumentation
 │   ├── bbmd.py              # BBMD management
 │   └── errors.py            # Error injection
 ├── brick/                   # Brick schema parsing
@@ -363,10 +377,43 @@ The simulation exposes all equipment as BACnet devices:
 
 - Each equipment instance gets a unique BACnet device ID
 - Process variables are mapped to BACnet objects:
-  - Temperatures → Analog Input (AI)
-  - Setpoints → Analog Value (AV)
+  - Temperatures → Analog Value (AV) with degrees-fahrenheit
+  - Setpoints → Analog Value (AV) with degrees-fahrenheit
+  - Airflows → Analog Value (AV) with cubic-feet-per-minute
+  - Valve/damper positions → Analog Value (AV) with percent
   - Status → Binary Value (BV)
-  - Modes → Multi-State Value (MSV)
+  - Modes → Multi-State Value (MSV) with stateText
+- All numeric points carry proper BACnet engineering units (no-units for dimensionless values like COP and ratios)
+
+### Change of Value (COV) Notifications
+
+All simulated BACnet objects support COV subscriptions:
+
+- **Analog values** use `COVIncrementCriteria` — notifications fire only when the change exceeds `covIncrement` (default 0.1), filtering out noise from minor simulation fluctuations
+- **Binary values** use `GenericCriteria` — notifications fire on any state change
+- **Multi-state values** use `GenericCriteria` — notifications fire on any state transition
+
+Clients subscribe via the standard BACnet `SubscribeCOV` service. The initial notification on subscribe delivers the current value, and subsequent notifications arrive as the simulation updates equipment state (once per simulation tick).
+
+### Router Diagnostics
+
+Each building's IP-to-VLAN router device exposes operational metrics as BACnet analog values:
+
+| Point | Object ID | Description |
+|-------|-----------|-------------|
+| `packets_routed` | analog-value,100 | Total NPDUs routed between networks |
+| `packets_from_ip` | analog-value,101 | NPDUs received from BACnet/IP |
+| `packets_to_ip` | analog-value,102 | NPDUs sent to BACnet/IP |
+| `who_is_requests` | analog-value,103 | Who-Is requests processed |
+| `i_am_responses` | analog-value,104 | I-Am responses sent |
+| `read_property_requests` | analog-value,105 | ReadProperty requests handled |
+| `write_property_requests` | analog-value,106 | WriteProperty requests handled |
+| `cov_notifications` | analog-value,107 | COV notifications forwarded |
+| `rejected_packets` | analog-value,108 | Dropped/rejected packets |
+| `uptime_seconds` | analog-value,109 | Router uptime in seconds |
+| `connected_networks` | analog-value,110 | Number of connected VLANs |
+
+These counters are COV-subscribable (covIncrement=1.0) and update each simulation tick.
 
 ### Discovering Simulated Devices
 
@@ -404,10 +451,13 @@ uv run pytest --cov=src
 - Multiple cooling system types (chilled water, DX)
 - Central plant equipment with performance curves
 - Standardized process variable interface
-- Automatic BACnet point generation
+- Automatic BACnet point generation with proper engineering units
+- COV (Change of Value) notifications on all simulated points
+- Router diagnostic counters (packets routed, request counts, uptime)
 - Configuration via YAML or Python dataclasses
 - Comprehensive test suite with performance benchmarks
 - Multi-building campus simulation with BBMD routing
+- Multi-container campus mode with real IP subnets and ace-acl-bbmd
 - Error injection for training and testing BACnet tools
 - Brick schema support for equipment topology
 

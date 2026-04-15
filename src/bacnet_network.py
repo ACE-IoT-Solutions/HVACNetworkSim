@@ -380,6 +380,11 @@ class BACnetNetworkManager:
             router_app.name = device_name
             self.router_app = router_app
 
+            # Instrument with packet counters exposed as BACnet points
+            from src.bacnet.router_metrics import instrument_router
+
+            self.router_metrics = instrument_router(router_app, len(self.networks))
+
             logger.info(f"Router created with {port_id - 1} network ports")
             return router_app
 
