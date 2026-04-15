@@ -80,6 +80,7 @@ def generate_bbmd_config(building_index: int, num_buildings: int) -> str:
 
     return f"""bbmd_address: "{building_ip}/24:47808"
 device_id: {bbmd_device_id}
+device_name: "BBMD-Building{building_index}"
 bdt_entries:
 {bdt_entries}
 accept_foreign_devices: true
@@ -129,11 +130,15 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
     ]
 
     # Building networks (BBMDs peer via direct IP routing through campus router)
+    # internal: true prevents the podman bridge gateway from routing between subnets,
+    # which would create phantom BBMDs visible to scanners at the gateway IP.
+    # Only the campus-router container should route between building subnets.
     for i in range(1, num_buildings + 1):
         lines.extend(
             [
                 f"  building{i}:",
                 "    driver: bridge",
+                "    internal: true",
                 "    ipam:",
                 "      config:",
                 f"        - subnet: 10.{i}.0.0/24",
@@ -149,12 +154,13 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
         host_port = BBMD_HOST_PORT_BASE + i
         safe_name = building_name.lower().replace(" ", "_").replace("-", "_")
 
-        # Build route-add commands for the BBMD to reach other building subnets
+        # Build route-add commands for the BBMD to reach other building subnets.
+        # Uses a Python helper script since ace-acl-bbmd image lacks iproute2.
         bbmd_route_cmds = []
         for j in range(1, num_buildings + 1):
             if j != i:
                 bbmd_route_cmds.append(
-                    f"ip route add 10.{j}.0.0/24 via 10.{i}.0.254 2>/dev/null || true"
+                    f"python3 /app/config/add_route.py 10.{j}.0.0 255.255.255.0 10.{i}.0.254"
                 )
 
         # BBMD service - on building network, with routes to peer subnets
@@ -171,10 +177,11 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
                 "    volumes:",
                 f"      - ./campus/configs/bbmd{i}/bbmd_config.yaml:/app/config/bbmd_config.yaml:ro",
                 f"      - ./campus/configs/bbmd{i}/acl_rules.yaml:/app/config/acl_rules.yaml:ro",
+                "      - ./campus/add_route.py:/app/config/add_route.py:ro",
             ]
         )
         if bbmd_route_cmds and num_buildings > 1:
-            # Wrap the default CMD with route setup
+            # Wrap the default CMD with Python-based route setup (no iproute2 in image)
             route_str = " && ".join(bbmd_route_cmds)
             lines.extend(
                 [

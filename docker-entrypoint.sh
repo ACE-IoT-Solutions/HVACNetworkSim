@@ -7,14 +7,14 @@ auto_detect_ip() {
     # Try to get IP from hostname -I (most reliable in containers)
     IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
-    # If that fails, try ip command
+    # If that fails, try reading from /proc (no iproute2 needed)
     if [ -z "$IP" ]; then
-        IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1 2>/dev/null)
+        IP=$(python3 -c "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.connect(('10.255.255.255',1)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
     fi
 
-    # If that fails, try ifconfig
+    # If that fails, try /proc/net/fib_trie (Linux-only, no external tools)
     if [ -z "$IP" ]; then
-        IP=$(ifconfig 2>/dev/null | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -1)
+        IP=$(awk '/32 host/ { print f } {f=$2}' /proc/net/fib_trie 2>/dev/null | grep -v '127.0.0.1' | head -1)
     fi
 
     echo "$IP"
@@ -57,8 +57,12 @@ if [ -n "$CAMPUS_ROUTES" ]; then
     for route in $(echo "$CAMPUS_ROUTES" | tr ',' ' '); do
         subnet=$(echo "$route" | cut -d: -f1)
         gateway=$(echo "$route" | cut -d: -f2)
+        # Convert CIDR to dest + netmask for add_route.py
+        dest=$(echo "$subnet" | cut -d/ -f1)
+        cidr=$(echo "$subnet" | cut -d/ -f2)
+        netmask=$(python3 -c "import ipaddress; print(ipaddress.IPv4Network('0.0.0.0/${cidr}').netmask)")
         echo "  Adding route: $subnet via $gateway"
-        ip route add "$subnet" via "$gateway" 2>/dev/null || echo "  Warning: Failed to add route $subnet via $gateway"
+        python3 /app/campus/add_route.py "$dest" "$netmask" "$gateway" 2>/dev/null || echo "  Warning: Failed to add route $subnet via $gateway"
     done
 fi
 

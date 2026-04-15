@@ -103,7 +103,9 @@ def build_image(runtime: str, force: bool = False) -> bool:
     print(f"Building {IMAGE_NAME} image...")
     script_dir = Path(__file__).parent
 
-    result = subprocess.run([runtime, "build", "-t", IMAGE_NAME, str(script_dir)], cwd=script_dir)
+    result = subprocess.run(
+        [runtime, "build", "--network=host", "-t", IMAGE_NAME, str(script_dir)], cwd=script_dir
+    )
 
     if result.returncode != 0:
         print("Error: Failed to build image", file=sys.stderr)
@@ -297,28 +299,64 @@ def build_bbmd_image(runtime: str, force: bool = False) -> bool:
     print(f"Building {BBMD_IMAGE_NAME} image from {bbmd_dir}...")
 
     # The ace-acl-bbmd project keeps its Dockerfile at integration_testing/Dockerfile.bbmd
-    # with build context at project root. We patch it to also copy README.md (needed by hatchling).
+    # with build context at project root. We patch it to:
+    # 1. Copy README.md (needed by hatchling)
+    # 2. Use uv bookworm (non-slim) base which includes gcc + python3-dev,
+    #    avoiding apt-get calls that fail without network access to deb.debian.org.
     dockerfile = bbmd_dir / "integration_testing" / "Dockerfile.bbmd"
     if dockerfile.exists():
         import tempfile
 
-        patched_content = dockerfile.read_text().replace(
+        patched_content = dockerfile.read_text()
+        patched_content = patched_content.replace(
+            "FROM python:3.13-slim",
+            "FROM ghcr.io/astral-sh/uv:python3.13-bookworm",
+        )
+        patched_content = patched_content.replace(
             "COPY pyproject.toml uv.lock ./",
             "COPY pyproject.toml uv.lock README.md ./",
+        )
+        # Remove the apt-get step — gcc and python headers are in the base image
+        import re
+
+        patched_content = re.sub(
+            r"# Install system dependencies\nRUN apt-get update.*?rm -rf /var/lib/apt/lists/\*\n",
+            "",
+            patched_content,
+            flags=re.DOTALL,
+        )
+        # uv is already in the base image, just use it directly
+        patched_content = patched_content.replace(
+            "RUN pip install uv && \\\n    uv pip install --system -e .",  # noqa: W605
+            "RUN uv sync --no-dev",
+        )
+        # Ensure the venv bin dir is on PATH so ace-acl-bbmd is found by name
+        patched_content = patched_content.replace(
+            "WORKDIR /app",
+            'WORKDIR /app\nENV PATH="/app/.venv/bin:$PATH"',
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".Dockerfile", delete=False) as f:
             f.write(patched_content)
             patched_path = f.name
         try:
             result = subprocess.run(
-                [runtime, "build", "-f", patched_path, "-t", BBMD_IMAGE_NAME, str(bbmd_dir)],
+                [
+                    runtime,
+                    "build",
+                    "--network=host",
+                    "-f",
+                    patched_path,
+                    "-t",
+                    BBMD_IMAGE_NAME,
+                    str(bbmd_dir),
+                ],
                 cwd=bbmd_dir,
             )
         finally:
             Path(patched_path).unlink(missing_ok=True)
     else:
         result = subprocess.run(
-            [runtime, "build", "-t", BBMD_IMAGE_NAME, str(bbmd_dir)], cwd=bbmd_dir
+            [runtime, "build", "--network=host", "-t", BBMD_IMAGE_NAME, str(bbmd_dir)], cwd=bbmd_dir
         )
 
     if result.returncode != 0:

@@ -128,7 +128,7 @@ info "Step 2/6: Building container images..."
 # Build hvac-simulator
 if [ "$FORCE_BUILD" = true ] || ! $RUNTIME image inspect hvac-simulator &>/dev/null; then
     info "Building hvac-simulator..."
-    $RUNTIME build -t hvac-simulator .
+    $RUNTIME build --network=host -t hvac-simulator .
     ok "hvac-simulator built"
 else
     ok "hvac-simulator image exists (use --build to rebuild)"
@@ -144,15 +144,21 @@ fi
 
 if [ "$FORCE_BUILD" = true ] || ! $RUNTIME image inspect ace-acl-bbmd &>/dev/null; then
     info "Building ace-acl-bbmd..."
-    # Patch Dockerfile to include README.md (needed by hatchling editable install)
+    # Patch Dockerfile: swap base image to include gcc (avoids apt-get needing network),
+    # add README.md (needed by hatchling), and use uv sync instead of pip.
     DOCKERFILE="$BBMD_DIR/integration_testing/Dockerfile.bbmd"
     if [ -f "$DOCKERFILE" ]; then
         PATCHED=$(mktemp)
-        sed 's|COPY pyproject.toml uv.lock \./|COPY pyproject.toml uv.lock README.md ./|' "$DOCKERFILE" > "$PATCHED"
-        $RUNTIME build -f "$PATCHED" -t ace-acl-bbmd "$BBMD_DIR"
+        sed -e 's|FROM python:3.13-slim|FROM ghcr.io/astral-sh/uv:python3.13-bookworm|' \
+            -e 's|COPY pyproject.toml uv.lock \./|COPY pyproject.toml uv.lock README.md ./|' \
+            -e '/# Install system dependencies/,/rm -rf \/var\/lib\/apt\/lists/d' \
+            -e 's|RUN pip install uv &&.*|RUN uv sync --no-dev|' \
+            -e 's|WORKDIR /app|WORKDIR /app\nENV PATH="/app/.venv/bin:$PATH"|' \
+            "$DOCKERFILE" > "$PATCHED"
+        $RUNTIME build --network=host -f "$PATCHED" -t ace-acl-bbmd "$BBMD_DIR"
         rm -f "$PATCHED"
     else
-        $RUNTIME build -t ace-acl-bbmd "$BBMD_DIR"
+        $RUNTIME build --network=host -t ace-acl-bbmd "$BBMD_DIR"
     fi
     ok "ace-acl-bbmd built"
 else

@@ -1,14 +1,8 @@
 #FROM python:3.12-slim
 FROM ghcr.io/astral-sh/uv:python3.12-trixie
 
-# Install system dependencies including iproute2 for IP detection
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    make \
-    curl \
-    iproute2 \
-    && rm -rf /var/lib/apt/lists/*
+# Note: gcc, g++, make, curl are already in the uv base image.
+# Route management uses campus/add_route.py (ioctl) instead of iproute2.
 
 # Set working directory
 WORKDIR /app
@@ -16,6 +10,7 @@ WORKDIR /app
 # Copy project files (uv.lock ensures reproducible dependency resolution)
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
+COPY campus/add_route.py ./campus/add_route.py
 COPY examples/ ./examples/
 COPY data/ ./data/
 
