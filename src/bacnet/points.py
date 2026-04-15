@@ -23,36 +23,75 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional, Union
 
+from bacpypes3.local.analog import AnalogValueObject
+from bacpypes3.local.binary import BinaryValueObject
+from bacpypes3.local.multistate import (
+    MultiStateValueObject as _LocalMultiStateValueObject,
+)
+from bacpypes3.local.object import Object as _LocalObject
+from bacpypes3.local.cov import GenericCriteria
 from bacpypes3.object import (
-    AnalogValueObject,
-    BinaryValueObject,
-    MultiStateValueObject,
-    CharacterStringValueObject,
+    CharacterStringValueObject as _CharacterStringValueObject,
 )
 
 from src.core.constants import BACNET_UPDATE_DELAY_SECONDS
+
+
+class MultiStateValueObject(_LocalMultiStateValueObject):
+    """Local MultiStateValueObject with corrected COV criteria.
+
+    The upstream bacpypes3 local MSV uses COVIncrementCriteria but the
+    MSV object type doesn't define a covIncrement property.  We override
+    with GenericCriteria which only tracks presentValue and statusFlags.
+    """
+
+    _cov_criteria = GenericCriteria
+
+
+class CharacterStringValueObject(_LocalObject, _CharacterStringValueObject):
+    """Local CharacterStringValueObject with COV support."""
+
+    _cov_criteria = GenericCriteria
+    _required = ("presentValue", "statusFlags")
+
 
 logger = logging.getLogger(__name__)
 
 # Unit conversion mapping from common HVAC units to BACnet units
 UNIT_MAPPING: Dict[str, str] = {
+    # Temperature
     "°F": "degrees-fahrenheit",
     "degF": "degrees-fahrenheit",
     "°C": "degrees-celsius",
     "degC": "degrees-celsius",
+    # Flow
     "CFM": "cubic-feet-per-minute",
     "ft³/min": "cubic-feet-per-minute",
     "GPM": "gallons-per-minute",
     "gal/min": "gallons-per-minute",
+    "cf/hr": "cubic-feet-per-hour",
+    # Ratio / dimensionless
     "fraction": "percent",
     "%": "percent",
+    "COP": "no-units",
+    "ratio": "no-units",
+    # Area / volume
     "sq ft": "square-feet",
     "cu ft": "cubic-feet",
+    # Power / energy
     "kW": "kilowatts",
     "BTU/hr": "btus-per-hour",
+    "MBH": "kilo-btus-per-hour",
+    "therms/hr": "therms",
     "tons": "tons-refrigeration",
+    # Pressure
     "psi": "pounds-force-per-square-inch",
     "in-wg": "inches-of-water",
+    # Time / rate
+    "minutes": "minutes",
+    "cycles/hr": "cycles-per-hour",
+    # Count
+    "count": "no-units",
 }
 
 
@@ -86,12 +125,14 @@ def create_bacnet_point(
     try:
         if point_type in (float, int):
             units = _convert_unit(point_meta.get("unit"))
+            cov_increment = point_meta.get("cov_increment", 0.1)
             return AnalogValueObject(
                 objectIdentifier=f"analog-value,{point_id}",
                 objectName=point_name,
                 description=label,
                 presentValue=float(value),
                 units=units,
+                covIncrement=cov_increment,
             )
 
         elif point_type is bool:
@@ -122,7 +163,7 @@ def create_bacnet_point(
             else:
                 # Character string for free-form text
                 return CharacterStringValueObject(
-                    objectIdentifier=f"character-string-value,{point_id}",
+                    objectIdentifier=("characterstringValue", point_id),
                     objectName=point_name,
                     description=label,
                     presentValue=str(value),

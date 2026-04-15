@@ -2,12 +2,10 @@ import asyncio
 import logging
 
 from bacpypes3.app import Application
-from bacpypes3.object import (
-    AnalogValueObject,
-    BinaryValueObject,
-    MultiStateValueObject,
-    CharacterStringValueObject,
-)
+from bacpypes3.local.analog import AnalogValueObject
+from bacpypes3.local.binary import BinaryValueObject
+
+from src.bacnet.points import MultiStateValueObject, CharacterStringValueObject
 
 from src.bacnet.device import (
     get_package_version,
@@ -303,6 +301,7 @@ class BACPypesApplicationMixin:
                     description=point_meta["label"],
                     presentValue=float(value),
                     units=units,
+                    covIncrement=0.1,
                 )
 
             elif point_meta["type"] is bool:
@@ -324,7 +323,7 @@ class BACPypesApplicationMixin:
                 )
             else:
                 point_obj = CharacterStringValueObject(
-                    objectIdentifier=f"character-string-value,{point_id}",
+                    objectIdentifier=("characterstringValue", point_id),
                     objectName=point_name,
                     description=point_meta["label"],
                     presentValue=str(value),

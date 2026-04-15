@@ -444,11 +444,13 @@ class Chiller(BACPypesApplicationMixin):
                 "type": float,
                 "label": "Design COP",
                 "description": "Coefficient of Performance at design conditions",
+                "unit": "COP",
             },
             "current_cop": {
                 "type": float,
                 "label": "Current COP",
                 "description": "Current Coefficient of Performance",
+                "unit": "COP",
             },
             "design_entering_condenser_temp": {
                 "type": float,

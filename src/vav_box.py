@@ -821,6 +821,7 @@ class VAVBox(BACPypesApplicationMixin):
                 "type": int,
                 "label": "Occupancy Count",
                 "description": "Number of people occupying the zone",
+                "unit": "count",
             },
             "zone_temp_setpoint": {
                 "type": float,
@@ -885,6 +886,7 @@ class VAVBox(BACPypesApplicationMixin):
                 "type": float,
                 "label": "Thermal Mass Factor",
                 "description": "Factor representing zone's thermal mass (higher means more mass)",
+                "unit": "ratio",
             },
             "cooling_energy": {
                 "type": float,

@@ -460,6 +460,7 @@ class Boiler(BACPypesApplicationMixin):
                 "type": float,
                 "label": "Turndown Ratio",
                 "description": "Ratio of maximum to minimum firing rate",
+                "unit": "ratio",
             },
             "condensing": {
                 "type": bool,
@@ -506,11 +507,13 @@ class Boiler(BACPypesApplicationMixin):
                 "type": float,
                 "label": "Cycles Per Hour Limit",
                 "description": "Maximum allowed cycles per hour",
+                "unit": "cycles/hr",
             },
             "cycles_in_current_hour": {
                 "type": float,
                 "label": "Cycles In Current Hour",
                 "description": "Number of on/off cycles in the current hour",
+                "unit": "cycles/hr",
             },
             "time_in_current_state": {
                 "type": float,

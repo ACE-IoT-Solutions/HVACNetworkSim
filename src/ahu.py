@@ -497,6 +497,7 @@ class AirHandlingUnit(BACPypesApplicationMixin):
                 "type": int,
                 "label": "Number of VAV Boxes",
                 "description": "Number of VAV boxes connected to this AHU",
+                "unit": "count",
             },
             "vav_box_names": {
                 "type": list,
@@ -521,11 +522,13 @@ class AirHandlingUnit(BACPypesApplicationMixin):
                 "type": int,
                 "label": "Compressor Stages",
                 "description": "Total number of compressor stages",
+                "unit": "count",
             },
             "active_compressor_stages": {
                 "type": int,
                 "label": "Active Compressor Stages",
                 "description": "Number of currently active compressor stages",
+                "unit": "count",
             },
         }
 
