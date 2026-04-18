@@ -19,6 +19,11 @@ The easiest way to run the simulation is with the `hvac-sim` CLI, which handles 
 
 The CLI auto-detects Podman or Docker, builds the image if needed, and sets up all the correct volume mappings and environment variables.
 
+Security defaults:
+- Host networking requires `--allow-host-network`.
+- Campus BBMD host ports and foreign-device registration require `--expose-campus-bacnet`.
+- `-e/--env` only accepts `BACNET_ADDRESS`, `BACNET_IP`, `BACNET_SUBNET`, `BACNET_PORT`, and `BACNET_DEVICE_ID`.
+
 ### CLI Options
 
 ```bash
@@ -30,10 +35,13 @@ Options:
   --device-id ID        BACnet device instance ID (default: 599)
   -p, --port PORT       Host port for BACnet UDP (default: 47808)
   --network MODE        Container network mode (e.g., 'host')
+  --allow-host-network  Explicitly allow direct host-network exposure
   --build               Force rebuild the container image
   --stop                Stop the running simulation
   --logs                Show logs from the container
-  -e KEY=VALUE          Set additional environment variables
+  -e KEY=VALUE          Set additional BACnet runtime variables
+  --custom-script PATH  Run a mounted custom Python script
+  --allow-custom-script Explicitly allow arbitrary custom script execution
 
 Multi-building options:
   --multi-building      Enable multi-building mode with BBMD
@@ -41,6 +49,7 @@ Multi-building options:
   --duplicate-ids N     Inject N duplicate device IDs
   --duplicate-networks N  Inject N duplicate network numbers
   --duplicate-routers N   Inject N duplicate routers
+  --expose-campus-bacnet  Publish campus BBMD ports and allow foreign devices
 ```
 
 ### Examples
@@ -57,13 +66,16 @@ Multi-building options:
 ./hvac-sim --logs
 
 # Use host networking for BACnet discovery
-./hvac-sim --network host bldg36.ttl
+./hvac-sim --network host --allow-host-network bldg36.ttl
 
 # Stop the running simulation
 ./hvac-sim --stop
 
 # Run multi-building campus simulation
 ./hvac-sim --multi-building examples/multi_building_campus.ttl
+
+# Run a custom script with explicit acknowledgement
+./hvac-sim --custom-script examples/example_simulation.py --allow-custom-script
 
 # Run with error injection for training
 ./hvac-sim --inject-errors --duplicate-ids 2 bldg36.ttl
@@ -111,7 +123,11 @@ Each building gets a dedicated range of 1000 network numbers:
 
 ```bash
 # Generate compose file, build images, and start the campus
+# External BACnet exposure is disabled by default.
 ./hvac-sim --campus examples/multi_building_campus.ttl
+
+# Publish BBMD ports and allow foreign-device registration explicitly
+./hvac-sim --campus --expose-campus-bacnet examples/multi_building_campus.ttl
 
 # View logs / stop
 ./hvac-sim --campus-logs
@@ -215,7 +231,8 @@ podman run --rm -it -p 47808:47808/udp \
 | `BACNET_DEVICE_ID` | 599 | BACnet device instance ID |
 | `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
-| `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode) |
+| `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode; use `--custom-script`) |
+| `ALLOW_CUSTOM_SCRIPT` | false | Required to run `CUSTOM_SCRIPT` in custom mode |
 | `MULTI_BUILDING_MODE` | false | Enable multi-building campus simulation |
 | `INJECT_ERRORS` | false | Enable error injection mode |
 | `DUPLICATE_DEVICE_IDS` | 0 | Number of duplicate device IDs to inject |

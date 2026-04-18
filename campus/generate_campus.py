@@ -26,6 +26,9 @@ Usage:
     python campus/generate_campus.py examples/large_campus.ttl
 """
 
+import argparse
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -46,7 +49,15 @@ def parse_campus(ttl_file: str):
 BBMD_HOST_PORT_BASE = 47808
 
 
-def generate_bbmd_config(building_index: int, num_buildings: int) -> str:
+def yaml_quote(value: str) -> str:
+    """Quote a scalar safely for YAML output."""
+
+    return json.dumps(value)
+
+
+def generate_bbmd_config(
+    building_index: int, num_buildings: int, expose_bacnet: bool = False
+) -> str:
     """Generate BBMD config YAML for a building.
 
     Each BBMD is configured with its building subnet address and peers with
@@ -83,7 +94,7 @@ device_id: {bbmd_device_id}
 device_name: "BBMD-Building{building_index}"
 bdt_entries:
 {bdt_entries}
-accept_foreign_devices: true
+accept_foreign_devices: {"true" if expose_bacnet else "false"}
 log_level: "INFO"
 enable_metrics: true
 metrics_http_port: 9090
@@ -102,7 +113,9 @@ rules:
 """
 
 
-def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") -> str:
+def generate_compose(
+    campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd", expose_bacnet: bool = False
+) -> str:
     """Generate docker-compose.campus.yml content.
 
     Args:
@@ -152,7 +165,9 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
         building_ip = f"10.{i}.0.2"
         sim_ip = f"10.{i}.0.10"
         host_port = BBMD_HOST_PORT_BASE + i
-        safe_name = building_name.lower().replace(" ", "_").replace("-", "_")
+        safe_name = re.sub(r"[^a-z0-9_.]+", "_", building_name.lower()).strip("_")
+        if not safe_name:
+            safe_name = f"building_{i}"
 
         # Build route-add commands for the BBMD to reach other building subnets.
         # Uses a Python helper script since ace-acl-bbmd image lacks iproute2.
@@ -172,8 +187,17 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
                 "    networks:",
                 f"      building{i}:",
                 f"        ipv4_address: {building_ip}",
-                "    ports:",
-                f'      - "{host_port}:47808/udp"',
+            ]
+        )
+        if expose_bacnet:
+            lines.extend(
+                [
+                    "    ports:",
+                    f'      - "{host_port}:47808/udp"',
+                ]
+            )
+        lines.extend(
+            [
                 "    volumes:",
                 f"      - ./campus/configs/bbmd{i}/bbmd_config.yaml:/app/config/bbmd_config.yaml:ro",
                 f"      - ./campus/configs/bbmd{i}/acl_rules.yaml:/app/config/acl_rules.yaml:ro",
@@ -217,15 +241,15 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
             f"      building{i}:",
             f"        ipv4_address: {sim_ip}",
             "    volumes:",
-            f"      - ./{ttl_relative.parent}:/app/brick_schemas:ro",
+            f"      - {yaml_quote(f'./{ttl_relative.parent}:/app/brick_schemas:ro')}",
             "    environment:",
-            "      - SIMULATION_MODE=brick",
-            f"      - BRICK_TTL_FILE=/app/brick_schemas/{ttl_relative.name}",
-            f"      - BUILDING_NAME={building_name}",
-            "      - BACNET_SUBNET=24",
+            '      SIMULATION_MODE: "brick"',
+            f"      BRICK_TTL_FILE: {yaml_quote(f'/app/brick_schemas/{ttl_relative.name}')}",
+            f"      BUILDING_NAME: {yaml_quote(building_name)}",
+            '      BACNET_SUBNET: "24"',
         ]
         if campus_routes:
-            sim_lines.append(f"      - CAMPUS_ROUTES={campus_routes}")
+            sim_lines.append(f"      CAMPUS_ROUTES: {yaml_quote(campus_routes)}")
         if num_buildings > 1:
             sim_lines.extend(
                 [
@@ -294,15 +318,18 @@ def generate_compose(campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd") ->
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python campus/generate_campus.py <ttl_file>", file=sys.stderr)
-        print(
-            "Example: python campus/generate_campus.py examples/multi_building_campus.ttl",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Generate campus compose and BBMD config files from a Brick TTL file"
+    )
+    parser.add_argument("ttl_file", help="Campus Brick TTL file")
+    parser.add_argument(
+        "--expose-bacnet",
+        action="store_true",
+        help="Publish BBMD host ports and allow foreign-device registration",
+    )
+    args = parser.parse_args()
 
-    ttl_file = sys.argv[1]
+    ttl_file = args.ttl_file
     ttl_path = Path(ttl_file)
 
     # Resolve relative to project root if not absolute
@@ -332,7 +359,7 @@ def main():
         bbmd_dir = configs_dir / f"bbmd{i}"
         bbmd_dir.mkdir(parents=True, exist_ok=True)
 
-        bbmd_config = generate_bbmd_config(i, num_buildings)
+        bbmd_config = generate_bbmd_config(i, num_buildings, expose_bacnet=args.expose_bacnet)
         (bbmd_dir / "bbmd_config.yaml").write_text(bbmd_config)
 
         acl_config = generate_acl_config()
@@ -342,10 +369,15 @@ def main():
         print(f"  Written: {bbmd_dir}/acl_rules.yaml")
 
     # Generate docker-compose.campus.yml
-    compose_content = generate_compose(campus, str(ttl_path))
+    compose_content = generate_compose(campus, str(ttl_path), expose_bacnet=args.expose_bacnet)
     compose_path = PROJECT_ROOT / "docker-compose.campus.yml"
     compose_path.write_text(compose_content)
     print(f"\nWritten: {compose_path}")
+
+    if args.expose_bacnet:
+        print("External BACnet exposure: enabled")
+    else:
+        print("External BACnet exposure: disabled (use --expose-bacnet to publish BBMD ports)")
 
     print(
         f"\nCampus generation complete: {num_buildings} buildings, "

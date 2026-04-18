@@ -27,6 +27,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+from src.core.env_validation import (
+    EnvironmentValidationError,
+    format_container_command,
+    parse_extra_env_var,
+    validate_bacnet_device_id,
+    validate_bacnet_port,
+)
+
 
 # Container configuration
 IMAGE_NAME = "hvac-simulator"
@@ -34,6 +42,7 @@ BBMD_IMAGE_NAME = "ace-acl-bbmd"
 CONTAINER_NAME = "hvac-bacnet-sim"
 DEFAULT_PORT = 47808
 BRICK_MOUNT_PATH = "/app/brick_schemas"
+CUSTOM_SCRIPT_MOUNT_PATH = "/app/custom_scripts"
 CAMPUS_COMPOSE_FILE = "docker-compose.campus.yml"
 
 
@@ -157,13 +166,37 @@ def resolve_brick_file(brick_path: str) -> tuple[Path, str]:
     return brick_path, container_path
 
 
+def resolve_custom_script(script_path: str) -> tuple[Path, str]:
+    """Resolve a custom Python script path for mounting into the container."""
+    script = Path(script_path)
+    script_dir = Path(__file__).parent
+
+    if not script.is_absolute():
+        script = (script_dir / script).resolve()
+    else:
+        script = script.resolve()
+
+    if not script.exists():
+        print(f"Error: Custom script not found: {script}", file=sys.stderr)
+        sys.exit(1)
+
+    if script.suffix != ".py":
+        print("Error: Custom scripts must be Python files (*.py)", file=sys.stderr)
+        sys.exit(1)
+
+    return script, f"{CUSTOM_SCRIPT_MOUNT_PATH}/{script.name}"
+
+
 def run_simulation(
     runtime: str,
     brick_file: str = None,
+    custom_script: str = None,
     device_id: int = None,
     port: int = DEFAULT_PORT,
     detach: bool = False,
     network_mode: str = None,
+    allow_host_network: bool = False,
+    allow_custom_script: bool = False,
     extra_env: dict = None,
     multi_building: bool = False,
     inject_errors: bool = False,
@@ -172,6 +205,24 @@ def run_simulation(
     duplicate_routers: int = 0,
 ):
     """Run the HVAC simulation container."""
+
+    if network_mode == "host" and not allow_host_network:
+        print(
+            "Error: host networking requires --allow-host-network to acknowledge external access.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if brick_file and custom_script:
+        print("Error: --custom-script cannot be combined with a Brick TTL file.", file=sys.stderr)
+        return 1
+
+    if custom_script and not allow_custom_script:
+        print(
+            "Error: --custom-script requires --allow-custom-script to acknowledge arbitrary code execution.",
+            file=sys.stderr,
+        )
+        return 1
 
     cmd = [runtime, "run"]
 
@@ -190,13 +241,20 @@ def run_simulation(
     if network_mode:
         cmd.extend(["--network", network_mode])
 
-    # Port mapping
-    cmd.extend(["-p", f"{port}:{DEFAULT_PORT}/udp"])
-
     # Environment variables
     env_vars = {}
 
-    if brick_file:
+    if extra_env:
+        env_vars.update(extra_env)
+
+    if custom_script:
+        host_path, container_path = resolve_custom_script(custom_script)
+        mount_dir = host_path.parent
+        cmd.extend(["-v", f"{mount_dir}:{CUSTOM_SCRIPT_MOUNT_PATH}:ro"])
+        env_vars["SIMULATION_MODE"] = "custom"
+        env_vars["ALLOW_CUSTOM_SCRIPT"] = "true"
+        env_vars["CUSTOM_SCRIPT"] = container_path
+    elif brick_file:
         host_path, container_path = resolve_brick_file(brick_file)
 
         # Mount the brick file's directory
@@ -208,8 +266,19 @@ def run_simulation(
     else:
         env_vars["SIMULATION_MODE"] = "simple"
 
-    if device_id:
+    if device_id is not None:
         env_vars["BACNET_DEVICE_ID"] = str(device_id)
+
+    if network_mode == "host":
+        env_vars["BACNET_PORT"] = str(port)
+    else:
+        if env_vars.get("BACNET_PORT", str(DEFAULT_PORT)) != str(DEFAULT_PORT):
+            print(
+                "Error: BACNET_PORT overrides require --network host; use --port for bridge-mode publishing.",
+                file=sys.stderr,
+            )
+            return 1
+        cmd.extend(["-p", f"{port}:{DEFAULT_PORT}/udp"])
 
     # Multi-building mode
     if multi_building:
@@ -225,10 +294,6 @@ def run_simulation(
         if duplicate_routers > 0:
             env_vars["DUPLICATE_ROUTERS"] = str(duplicate_routers)
 
-    # Add any extra environment variables
-    if extra_env:
-        env_vars.update(extra_env)
-
     # Add env vars to command
     for key, value in env_vars.items():
         cmd.extend(["-e", f"{key}={value}"])
@@ -237,7 +302,7 @@ def run_simulation(
     cmd.append(IMAGE_NAME)
 
     # Print the command for debugging/learning
-    print(f"Running: {' '.join(cmd)}")
+    print(f"Running: {format_container_command(cmd)}")
     print("-" * 60)
 
     # Execute
@@ -367,7 +432,7 @@ def build_bbmd_image(runtime: str, force: bool = False) -> bool:
     return True
 
 
-def run_campus_generate(ttl_file: str) -> bool:
+def run_campus_generate(ttl_file: str, expose_bacnet: bool = False) -> bool:
     """Run the campus generator script."""
     script_dir = Path(__file__).parent
     generator = script_dir / "campus" / "generate_campus.py"
@@ -376,21 +441,25 @@ def run_campus_generate(ttl_file: str) -> bool:
         print(f"Error: Campus generator not found: {generator}", file=sys.stderr)
         return False
 
-    result = subprocess.run(
-        [sys.executable, str(generator), ttl_file],
-        cwd=script_dir,
-    )
+    cmd = [sys.executable, str(generator)]
+    if expose_bacnet:
+        cmd.append("--expose-bacnet")
+    cmd.append(ttl_file)
+
+    result = subprocess.run(cmd, cwd=script_dir)
     return result.returncode == 0
 
 
-def run_campus(runtime: str, ttl_file: str, build: bool = False) -> int:
+def run_campus(
+    runtime: str, ttl_file: str, build: bool = False, expose_bacnet: bool = False
+) -> int:
     """Generate and start a campus simulation."""
     script_dir = Path(__file__).parent
     compose_file = script_dir / CAMPUS_COMPOSE_FILE
 
     # Generate compose and configs
     print("Generating campus configuration...")
-    if not run_campus_generate(ttl_file):
+    if not run_campus_generate(ttl_file, expose_bacnet=expose_bacnet):
         return 1
 
     if not compose_file.exists():
@@ -511,6 +580,12 @@ Examples:
         help="Container network mode (e.g., 'host' for BACnet discovery)",
     )
 
+    parser.add_argument(
+        "--allow-host-network",
+        action="store_true",
+        help="Acknowledge the risks of exposing the simulator directly on the host network",
+    )
+
     parser.add_argument("--build", action="store_true", help="Force rebuild the container image")
 
     parser.add_argument("--stop", action="store_true", help="Stop the running simulation container")
@@ -524,7 +599,19 @@ Examples:
         "--env",
         action="append",
         metavar="KEY=VALUE",
-        help="Set additional environment variables",
+        help="Set additional BACnet runtime variables (BACNET_ADDRESS/IP/SUBNET/PORT/DEVICE_ID only)",
+    )
+
+    parser.add_argument(
+        "--custom-script",
+        metavar="PATH",
+        help="Run a mounted custom Python script inside the container",
+    )
+
+    parser.add_argument(
+        "--allow-custom-script",
+        action="store_true",
+        help="Acknowledge arbitrary code execution when using --custom-script",
     )
 
     # Multi-building and error injection options
@@ -583,6 +670,12 @@ Examples:
         help="Show logs from the campus simulation",
     )
 
+    parser.add_argument(
+        "--expose-campus-bacnet",
+        action="store_true",
+        help="Publish campus BBMD UDP ports and allow foreign-device registration",
+    )
+
     args = parser.parse_args()
 
     # Handle --list
@@ -602,7 +695,12 @@ Examples:
         return campus_logs(runtime)
 
     if args.campus:
-        return run_campus(runtime, args.campus, build=args.build)
+        return run_campus(
+            runtime,
+            args.campus,
+            build=args.build,
+            expose_bacnet=args.expose_campus_bacnet,
+        )
 
     # Handle --stop
     if args.stop:
@@ -627,9 +725,24 @@ Examples:
     extra_env = {}
     if args.env:
         for env_str in args.env:
-            if "=" in env_str:
-                key, value = env_str.split("=", 1)
-                extra_env[key] = value
+            if "=" not in env_str:
+                print(f"Error: invalid environment variable assignment: {env_str}", file=sys.stderr)
+                return 1
+            key, value = env_str.split("=", 1)
+            try:
+                validated_key, validated_value = parse_extra_env_var(key, value)
+            except EnvironmentValidationError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            extra_env[validated_key] = validated_value
+
+    try:
+        args.port = validate_bacnet_port(args.port, variable_name="--port")
+        if args.device_id is not None:
+            args.device_id = validate_bacnet_device_id(args.device_id, variable_name="--device-id")
+    except EnvironmentValidationError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     # Validate error injection options
     if (
@@ -643,10 +756,13 @@ Examples:
     return run_simulation(
         runtime=runtime,
         brick_file=args.brick_file,
+        custom_script=args.custom_script,
         device_id=args.device_id,
         port=args.port,
         detach=args.detach,
         network_mode=args.network,
+        allow_host_network=args.allow_host_network,
+        allow_custom_script=args.allow_custom_script,
         extra_env=extra_env,
         multi_building=args.multi_building,
         inject_errors=args.inject_errors,

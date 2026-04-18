@@ -20,29 +20,136 @@ auto_detect_ip() {
     echo "$IP"
 }
 
-# Get the container IP
-if [ -z "$BACNET_IP" ]; then
-    DETECTED_IP=$(auto_detect_ip)
-    if [ -n "$DETECTED_IP" ]; then
-        export BACNET_IP="$DETECTED_IP"
-        echo "Auto-detected container IP: $BACNET_IP"
-    else
-        echo "Warning: Could not auto-detect IP address. Using default 0.0.0.0"
-        export BACNET_IP="0.0.0.0"
+validate_ipv4_address() {
+    python3 - "$1" <<'PY'
+import ipaddress
+import sys
+
+try:
+    print(ipaddress.IPv4Address(sys.argv[1]))
+except ValueError:
+    sys.exit(1)
+PY
+}
+
+validate_bacnet_address() {
+    python3 - "$1" <<'PY'
+import ipaddress
+import sys
+
+try:
+    interface = ipaddress.IPv4Interface(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+
+print(f"{interface.ip}/{interface.network.prefixlen}")
+PY
+}
+
+validate_subnet_bits() {
+    python3 - "$1" <<'PY'
+import sys
+
+try:
+    bits = int(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+
+if bits < 0 or bits > 32:
+    sys.exit(1)
+
+print(bits)
+PY
+}
+
+validate_port() {
+    python3 - "$1" <<'PY'
+import sys
+
+try:
+    port = int(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+
+if port < 1 or port > 65535:
+    sys.exit(1)
+
+print(port)
+PY
+}
+
+validate_device_id() {
+    python3 - "$1" <<'PY'
+import sys
+
+try:
+    device_id = int(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+
+if device_id < 0 or device_id > 4194303:
+    sys.exit(1)
+
+print(device_id)
+PY
+}
+
+# Normalize BACnet address configuration.
+if [ -n "$BACNET_ADDRESS" ]; then
+    if ! NORMALIZED_BACNET_ADDRESS=$(validate_bacnet_address "$BACNET_ADDRESS"); then
+        echo "Error: BACNET_ADDRESS must be a valid IPv4 interface like 172.26.0.20/16"
+        exit 1
     fi
+    BACNET_IP="${NORMALIZED_BACNET_ADDRESS%/*}"
+    BACNET_SUBNET="${NORMALIZED_BACNET_ADDRESS#*/}"
+    echo "Using provided BACNET_ADDRESS: $NORMALIZED_BACNET_ADDRESS"
 else
-    echo "Using provided BACNET_IP: $BACNET_IP"
+    if [ -z "$BACNET_IP" ]; then
+        DETECTED_IP=$(auto_detect_ip)
+        if [ -n "$DETECTED_IP" ]; then
+            BACNET_IP="$DETECTED_IP"
+            echo "Auto-detected container IP: $BACNET_IP"
+        else
+            echo "Warning: Could not auto-detect IP address. Using default 0.0.0.0"
+            BACNET_IP="0.0.0.0"
+        fi
+    else
+        echo "Using provided BACNET_IP: $BACNET_IP"
+    fi
+
+    if ! BACNET_IP=$(validate_ipv4_address "$BACNET_IP"); then
+        echo "Error: BACNET_IP must be a valid IPv4 address"
+        exit 1
+    fi
+
+    BACNET_SUBNET="${BACNET_SUBNET:-16}"
+    if ! BACNET_SUBNET=$(validate_subnet_bits "$BACNET_SUBNET"); then
+        echo "Error: BACNET_SUBNET must be an integer between 0 and 32"
+        exit 1
+    fi
+
+    NORMALIZED_BACNET_ADDRESS="${BACNET_IP}/${BACNET_SUBNET}"
 fi
 
-# Set default subnet mask if not provided (default /16 for Docker networks)
-BACNET_SUBNET="${BACNET_SUBNET:-16}"
-export BACNET_ADDRESS="${BACNET_IP}/${BACNET_SUBNET}"
+export BACNET_IP BACNET_SUBNET
+export BACNET_ADDRESS="$NORMALIZED_BACNET_ADDRESS"
 echo "BACnet Address: $BACNET_ADDRESS"
 
 # Set default port
 BACNET_PORT="${BACNET_PORT:-47808}"
+if ! BACNET_PORT=$(validate_port "$BACNET_PORT"); then
+    echo "Error: BACNET_PORT must be an integer between 1 and 65535"
+    exit 1
+fi
 export BACNET_PORT
 echo "BACnet Port: $BACNET_PORT"
+
+BACNET_DEVICE_ID="${BACNET_DEVICE_ID:-599}"
+if ! BACNET_DEVICE_ID=$(validate_device_id "$BACNET_DEVICE_ID"); then
+    echo "Error: BACNET_DEVICE_ID must be an integer between 0 and 4194303"
+    exit 1
+fi
+export BACNET_DEVICE_ID
 
 # Handle BUILDING_NAME for campus multi-container mode
 if [ -n "$BUILDING_NAME" ]; then
@@ -69,7 +176,7 @@ fi
 # Handle TTL file for brick-based simulation
 if [ -n "$BRICK_TTL_FILE" ]; then
     if [ -f "$BRICK_TTL_FILE" ]; then
-        echo "Using Brick TTL file: $BRICK_TTL_FILE"
+        echo "Using Brick TTL file: $(basename "$BRICK_TTL_FILE")"
         export BRICK_TTL_FILE
     else
         echo "Error: Brick TTL file not found: $BRICK_TTL_FILE"
@@ -86,7 +193,7 @@ cat > /app/configs/bacnet_config.ini <<EOF
 [BACpypes]
 objectName = HVACSimulator
 address = ${BACNET_ADDRESS}:${BACNET_PORT}
-objectIdentifier = ${BACNET_DEVICE_ID:-599}
+objectIdentifier = ${BACNET_DEVICE_ID}
 maxApduLengthAccepted = 1024
 segmentationSupported = segmentedBoth
 vendorIdentifier = 15
@@ -113,6 +220,10 @@ case "$SIMULATION_MODE" in
         ;;
     custom)
         # Allow running a custom script
+        if [ "${ALLOW_CUSTOM_SCRIPT:-false}" != "true" ]; then
+            echo "Error: custom mode requires ALLOW_CUSTOM_SCRIPT=true"
+            exit 1
+        fi
         if [ -n "$CUSTOM_SCRIPT" ] && [ -f "$CUSTOM_SCRIPT" ]; then
             echo "Running custom script: $CUSTOM_SCRIPT"
             exec /app/.venv/bin/python -u "$CUSTOM_SCRIPT"

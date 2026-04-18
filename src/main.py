@@ -41,6 +41,7 @@ import math
 import os
 import random
 import sys
+from pathlib import Path
 from typing import Dict, List
 
 logging.basicConfig(
@@ -60,6 +61,13 @@ from src.bacnet_network import (  # noqa: E402
 )
 from src.bacnet.bbmd import BBMDConfig, BBMDManager  # noqa: E402
 from src.bacnet.errors import BACnetErrorInjector, ErrorInjectionConfig  # noqa: E402
+from src.core.env_validation import (  # noqa: E402
+    EnvironmentValidationError,
+    normalize_bacnet_address,
+    parse_boolean_value,
+    parse_integer_value,
+    validate_bacnet_port,
+)
 
 
 def get_bacnet_address() -> str:
@@ -68,14 +76,45 @@ def get_bacnet_address() -> str:
     Returns:
         BACnet address string in format "IP/CIDR" (e.g., "172.26.0.20/16")
     """
-    # First check for full address
-    if os.getenv("BACNET_ADDRESS"):
-        return os.getenv("BACNET_ADDRESS")
+    return normalize_bacnet_address(
+        address=os.getenv("BACNET_ADDRESS"),
+        ip=os.getenv("BACNET_IP", "0.0.0.0"),
+        subnet=os.getenv("BACNET_SUBNET", "16"),
+    )
 
-    # Otherwise construct from IP and subnet
-    ip = os.getenv("BACNET_IP", "0.0.0.0")
-    subnet = os.getenv("BACNET_SUBNET", "16")
-    return f"{ip}/{subnet}"
+
+def get_bacnet_port() -> int:
+    """Get the BACnet UDP port from the environment."""
+
+    return validate_bacnet_port(os.getenv("BACNET_PORT", "47808"))
+
+
+def get_boolean_env(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable with strict validation."""
+
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return parse_boolean_value(raw_value, variable_name=name)
+
+
+def get_non_negative_env_int(name: str, default: str = "0") -> int:
+    """Parse a non-negative integer environment variable."""
+
+    return parse_integer_value(
+        os.getenv(name, default), variable_name=name, min_value=0, max_value=10_000
+    )
+
+
+def get_simulation_mode() -> str:
+    """Get the validated simulation mode."""
+
+    simulation_mode = os.getenv("SIMULATION_MODE", "simple").strip().lower()
+    if simulation_mode not in {"simple", "brick"}:
+        raise EnvironmentValidationError(
+            "SIMULATION_MODE must be 'simple' or 'brick' when running src/main.py"
+        )
+    return simulation_mode
 
 
 async def run_simple_simulation():
@@ -206,7 +245,7 @@ async def run_brick_simulation(
             sys.exit(1)
 
         logger.info("Starting Brick-based simulation with routed networks")
-        logger.info(f"  TTL file: {ttl_file}")
+        logger.info(f"  TTL file: {Path(ttl_file).name}")
 
         try:
             import rdflib  # noqa: F401 - availability check
@@ -254,7 +293,7 @@ async def run_brick_simulation(
 
     # Get BACnet address for the router
     bacnet_address = get_bacnet_address()
-    bacnet_port = int(os.getenv("BACNET_PORT", "47808"))
+    bacnet_port = get_bacnet_port()
 
     # Create the IP-to-VLAN router to bridge external traffic to internal VLANs
     # Router device ID is one below the device_id_start for this building
@@ -517,7 +556,7 @@ async def run_multi_building_simulation():
         sys.exit(1)
 
     logger.info("Starting Multi-Building Campus Simulation with BBMD")
-    logger.info(f"  TTL file: {ttl_file}")
+    logger.info(f"  TTL file: {Path(ttl_file).name}")
 
     # Check for rdflib
     try:
@@ -546,7 +585,7 @@ async def run_multi_building_simulation():
 
     # Get BACnet configuration
     bacnet_address = get_bacnet_address()
-    bacnet_port = int(os.getenv("BACNET_PORT", "47808"))
+    bacnet_port = get_bacnet_port()
     ip_base = bacnet_address.split("/")[0]
     subnet = bacnet_address.split("/")[1] if "/" in bacnet_address else "24"
 
@@ -554,14 +593,14 @@ async def run_multi_building_simulation():
     network_manager = BACnetNetworkManager(multi_building_mode=True)
 
     # Parse error injection configuration
-    inject_errors = os.getenv("INJECT_ERRORS", "").lower() == "true"
+    inject_errors = get_boolean_env("INJECT_ERRORS", False)
     error_config = None
     error_injector = None
 
     if inject_errors:
-        dup_ids = int(os.getenv("DUPLICATE_DEVICE_IDS", "0"))
-        dup_nets = int(os.getenv("DUPLICATE_NETWORK_NUMBERS", "0"))
-        dup_routers = int(os.getenv("DUPLICATE_ROUTERS", "0"))
+        dup_ids = get_non_negative_env_int("DUPLICATE_DEVICE_IDS")
+        dup_nets = get_non_negative_env_int("DUPLICATE_NETWORK_NUMBERS")
+        dup_routers = get_non_negative_env_int("DUPLICATE_ROUTERS")
 
         if dup_ids > 0 or dup_nets > 0 or dup_routers > 0:
             error_config = ErrorInjectionConfig(
@@ -874,7 +913,7 @@ async def run_single_building_from_campus():
         sys.exit(1)
 
     logger.info(f"Starting single-building simulation for: {building_name}")
-    logger.info(f"  TTL file: {ttl_file}")
+    logger.info(f"  TTL file: {Path(ttl_file).name}")
 
     try:
         import rdflib  # noqa: F401
@@ -935,37 +974,43 @@ async def run_single_building_from_campus():
 
 async def main():
     """Main entry point."""
-    logger.info("=" * 60)
-    logger.info("HVAC Network BACnet Simulator")
-    logger.info("=" * 60)
-
-    # Log configuration
-    bacnet_address = get_bacnet_address()
-    simulation_mode = os.getenv("SIMULATION_MODE", "simple")
-    multi_building_mode = os.getenv("MULTI_BUILDING_MODE", "").lower() == "true"
-    inject_errors = os.getenv("INJECT_ERRORS", "").lower() == "true"
-    building_name = os.getenv("BUILDING_NAME", "")
-
-    logger.info("Configuration:")
-    logger.info(f"  BACnet Address: {bacnet_address}")
-    logger.info(f"  BACnet Port: {os.getenv('BACNET_PORT', '47808')}")
-    logger.info(f"  Simulation Mode: {simulation_mode}")
-    logger.info(f"  Multi-Building Mode: {multi_building_mode}")
-    if building_name:
-        logger.info(f"  Building Name: {building_name}")
-
-    if simulation_mode == "brick" or multi_building_mode or building_name:
-        logger.info(f"  Brick TTL File: {os.getenv('BRICK_TTL_FILE', 'not set')}")
-
-    if inject_errors:
-        logger.info("  Error Injection: enabled")
-        logger.info(f"    Duplicate Device IDs: {os.getenv('DUPLICATE_DEVICE_IDS', '0')}")
-        logger.info(f"    Duplicate Networks: {os.getenv('DUPLICATE_NETWORK_NUMBERS', '0')}")
-        logger.info(f"    Duplicate Routers: {os.getenv('DUPLICATE_ROUTERS', '0')}")
-
-    logger.info("=" * 60)
-
     try:
+        logger.info("=" * 60)
+        logger.info("HVAC Network BACnet Simulator")
+        logger.info("=" * 60)
+
+        # Log configuration after validating env-driven settings.
+        bacnet_address = get_bacnet_address()
+        bacnet_port = get_bacnet_port()
+        simulation_mode = get_simulation_mode()
+        multi_building_mode = get_boolean_env("MULTI_BUILDING_MODE", False)
+        inject_errors = get_boolean_env("INJECT_ERRORS", False)
+        building_name = os.getenv("BUILDING_NAME", "").strip()
+        ttl_file = os.getenv("BRICK_TTL_FILE", "")
+
+        logger.info("Configuration:")
+        logger.info(f"  BACnet Address: {bacnet_address}")
+        logger.info(f"  BACnet Port: {bacnet_port}")
+        logger.info(f"  Simulation Mode: {simulation_mode}")
+        logger.info(f"  Multi-Building Mode: {multi_building_mode}")
+        if building_name:
+            logger.info(f"  Building Name: {building_name}")
+
+        if simulation_mode == "brick" or multi_building_mode or building_name:
+            logger.info(f"  Brick TTL File: {Path(ttl_file).name if ttl_file else 'not set'}")
+
+        if inject_errors:
+            logger.info("  Error Injection: enabled")
+            logger.info(
+                f"    Duplicate Device IDs: {get_non_negative_env_int('DUPLICATE_DEVICE_IDS')}"
+            )
+            logger.info(
+                f"    Duplicate Networks: {get_non_negative_env_int('DUPLICATE_NETWORK_NUMBERS')}"
+            )
+            logger.info(f"    Duplicate Routers: {get_non_negative_env_int('DUPLICATE_ROUTERS')}")
+
+        logger.info("=" * 60)
+
         if building_name and simulation_mode == "brick":
             await run_single_building_from_campus()
         elif multi_building_mode:
@@ -974,6 +1019,9 @@ async def main():
             await run_brick_simulation()
         else:
             await run_simple_simulation()
+    except EnvironmentValidationError as e:
+        logger.error("Invalid environment configuration: %s", e)
+        sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     except Exception as e:
