@@ -43,13 +43,10 @@ Options:
   --custom-script PATH  Run a mounted custom Python script
   --allow-custom-script Explicitly allow arbitrary custom script execution
 
-Multi-building options:
-  --multi-building      Enable multi-building mode with BBMD
-  --inject-errors       Enable error injection for training/testing
-  --duplicate-ids N     Inject N duplicate device IDs
-  --duplicate-networks N  Inject N duplicate network numbers
-  --duplicate-routers N   Inject N duplicate routers
-  --expose-campus-bacnet  Publish campus BBMD ports and allow foreign devices
+Campus simulation:
+  --campus TTL_FILE     Run multi-container campus simulation
+  --campus-stop         Stop the running campus simulation
+  --campus-logs         Show logs from the campus simulation
 ```
 
 ### Examples
@@ -71,14 +68,11 @@ Multi-building options:
 # Stop the running simulation
 ./hvac-sim --stop
 
-# Run multi-building campus simulation
-./hvac-sim --multi-building examples/multi_building_campus.ttl
+# Run multi-container campus simulation
+./hvac-sim --campus examples/multi_building_campus.ttl
 
 # Run a custom script with explicit acknowledgement
 ./hvac-sim --custom-script examples/example_simulation.py --allow-custom-script
-
-# Run with error injection for training
-./hvac-sim --inject-errors --duplicate-ids 2 bldg36.ttl
 ```
 
 ## Multi-Building Campus Simulation
@@ -113,21 +107,11 @@ Each building gets a dedicated range of 1000 network numbers:
 
 ### Running Multi-Building Simulations
 
-**Single-container mode** runs all buildings in one process (simulated BBMDs):
-
-```bash
-./hvac-sim --multi-building examples/multi_building_campus.ttl
-```
-
-**Multi-container campus mode** runs each building in its own container with real IP subnets and external [ace-acl-bbmd](https://github.com/ACE-IoT-Solutions/ace-acl-bbmd) instances for cross-building BACnet routing:
+Campus mode runs each building in its own container with real IP subnets and external [ace-acl-bbmd](https://github.com/ACE-IoT-Solutions/ace-acl-bbmd) instances for cross-building BACnet routing:
 
 ```bash
 # Generate compose file, build images, and start the campus
-# External BACnet exposure is disabled by default.
 ./hvac-sim --campus examples/multi_building_campus.ttl
-
-# Publish BBMD ports and allow foreign-device registration explicitly
-./hvac-sim --campus --expose-campus-bacnet examples/multi_building_campus.ttl
 
 # View logs / stop
 ./hvac-sim --campus-logs
@@ -135,11 +119,6 @@ Each building gets a dedicated range of 1000 network numbers:
 ```
 
 Campus mode requires the `ace-acl-bbmd` project as a sibling directory. The build patches its Dockerfile to use the `uv` base image and adds `--network=host` to work around Podman's default build isolation.
-
-```bash
-# With error injection for training
-./hvac-sim --multi-building --inject-errors --duplicate-ids 5 examples/large_campus.ttl
-```
 
 ### Large Campus Layout
 
@@ -174,34 +153,6 @@ ex:AHU2 a brick:AHU ;
 
 See `examples/multi_building_campus.ttl` for a basic example or `examples/large_campus.ttl` for a complete campus.
 
-## Error Injection for Testing
-
-The error injection feature deliberately creates BACnet configuration errors, useful for:
-- Training BACnet troubleshooting tools
-- Testing network diagnostic software
-- Creating realistic error scenarios for education
-
-### Error Types
-
-| Error Type | Description |
-|------------|-------------|
-| Duplicate Device IDs | Multiple devices with the same BACnet device instance ID |
-| Duplicate Network Numbers | Multiple networks claiming the same network number |
-| Duplicate Routers | Multiple routers on the same network segment |
-
-### Examples
-
-```bash
-# Inject 2 duplicate device IDs
-./hvac-sim --inject-errors --duplicate-ids 2 bldg36.ttl
-
-# Inject multiple error types
-./hvac-sim --inject-errors --duplicate-ids 2 --duplicate-networks 1 bldg36.ttl
-
-# Combine with multi-building mode
-./hvac-sim --multi-building --inject-errors --duplicate-ids 3 examples/multi_building_campus.ttl
-```
-
 ## Manual Container Commands
 
 For more control, you can run the container directly:
@@ -233,11 +184,7 @@ podman run --rm -it -p 47808:47808/udp \
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
 | `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode; use `--custom-script`) |
 | `ALLOW_CUSTOM_SCRIPT` | false | Required to run `CUSTOM_SCRIPT` in custom mode |
-| `MULTI_BUILDING_MODE` | false | Enable multi-building campus simulation |
-| `INJECT_ERRORS` | false | Enable error injection mode |
-| `DUPLICATE_DEVICE_IDS` | 0 | Number of duplicate device IDs to inject |
-| `DUPLICATE_NETWORK_NUMBERS` | 0 | Number of duplicate network numbers to inject |
-| `DUPLICATE_ROUTERS` | 0 | Number of duplicate routers to inject |
+| `BUILDING_NAME` | - | Building to simulate from a multi-building TTL (campus mode) |
 
 ## Local Development
 
@@ -473,9 +420,7 @@ uv run pytest --cov=src
 - Router diagnostic counters (packets routed, request counts, uptime)
 - Configuration via YAML or Python dataclasses
 - Comprehensive test suite with performance benchmarks
-- Multi-building campus simulation with BBMD routing
 - Multi-container campus mode with real IP subnets and ace-acl-bbmd
-- Error injection for training and testing BACnet tools
 - Brick schema support for equipment topology
 
 ## Requirements

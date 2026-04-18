@@ -40,10 +40,7 @@ Multi-Building Network Topology:
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-if TYPE_CHECKING:
-    from src.brick.campus import CampusStructure
+from typing import Any, Dict, List, Optional
 
 from src.bacnet.device import get_package_version, generate_firmware_revision
 
@@ -69,8 +66,7 @@ class NetworkInfo:
     network: Optional[Any] = None  # VirtualNetwork instance
     devices: List[Any] = field(default_factory=list)  # Application instances
     ahu_name: Optional[str] = None  # Associated AHU name (if AHU network)
-    building_name: Optional[str] = None  # Associated building name (multi-building mode)
-    building_index: int = 0  # Building index (0 for single-building mode)
+    building_name: Optional[str] = None  # Associated building name
 
 
 class BACnetNetworkManager:
@@ -101,14 +97,12 @@ class BACnetNetworkManager:
 
     def __init__(
         self,
-        multi_building_mode: bool = False,
         device_id_start: int = 1000,
         network_number_base: int = 0,
     ):
         """Initialize the network manager.
 
         Args:
-            multi_building_mode: If True, use building-indexed network numbering
             device_id_start: Starting device ID for this manager's devices.
                 In campus mode each building should use a unique range
                 (e.g., building 1 starts at 1000, building 2 at 2000).
@@ -125,9 +119,7 @@ class BACnetNetworkManager:
         self.router_app: Optional[Any] = None
         self._next_device_id = device_id_start
         self._next_mac_counter: Dict[int, int] = {}  # Per-network MAC counter
-        self.multi_building_mode = multi_building_mode
         self.network_number_base = network_number_base
-        self.buildings: Dict[str, int] = {}  # Building name -> building index
 
     def _get_next_mac(self, network_number: int) -> str:
         """Get the next available MAC address for a network.
@@ -150,52 +142,18 @@ class BACnetNetworkManager:
         self._next_device_id += 1
         return device_id
 
-    def _get_building_network_base(self, building_index: int) -> int:
-        """Get the base network number for a building.
-
-        Args:
-            building_index: 0-based building index
-
-        Returns:
-            Base network number for the building
-        """
-        if not self.multi_building_mode or building_index == 0:
-            return 0  # Single-building mode uses original numbering
-        return (building_index + 1) * self.BUILDING_NETWORK_RANGE
-
-    def register_building(self, building_name: str) -> int:
-        """Register a building and get its index.
-
-        Args:
-            building_name: Name of the building
-
-        Returns:
-            Building index (0-based)
-        """
-        if building_name not in self.buildings:
-            self.buildings[building_name] = len(self.buildings)
-        return self.buildings[building_name]
-
-    def create_central_plant_network(
-        self, building_index: int = 0, building_name: Optional[str] = None
-    ) -> NetworkInfo:
+    def create_central_plant_network(self, building_name: Optional[str] = None) -> NetworkInfo:
         """
         Create the central plant network for chillers, boilers, etc.
 
         Args:
-            building_index: Building index for multi-building mode (0 for single building)
             building_name: Optional building name for identification
 
         Returns:
             NetworkInfo for the central plant network
         """
-        if self.multi_building_mode and building_index > 0:
-            base = self._get_building_network_base(building_index)
-            network_number = base + self.BUILDING_CENTRAL_PLANT_OFFSET
-            network_name = f"central-plant-bldg{building_index + 1}"
-        else:
-            network_number = self.network_number_base + self.CENTRAL_PLANT_NETWORK
-            network_name = "central-plant"
+        network_number = self.network_number_base + self.CENTRAL_PLANT_NETWORK
+        network_name = "central-plant"
 
         print(f"Creating Central Plant network (Network {network_number})")
 
@@ -207,7 +165,6 @@ class BACnetNetworkManager:
             network=vlan,
             devices=[],
             building_name=building_name,
-            building_index=building_index,
         )
 
         self.networks[network_number] = network_info
@@ -217,7 +174,6 @@ class BACnetNetworkManager:
         self,
         ahu_name: str,
         ahu_index: int,
-        building_index: int = 0,
         building_name: Optional[str] = None,
     ) -> NetworkInfo:
         """
@@ -226,19 +182,13 @@ class BACnetNetworkManager:
         Args:
             ahu_name: Name of the AHU (e.g., "AHU1")
             ahu_index: Index of the AHU (0-based), used for network numbering
-            building_index: Building index for multi-building mode (0 for single building)
             building_name: Optional building name for identification
 
         Returns:
             NetworkInfo for the AHU network
         """
-        if self.multi_building_mode and building_index > 0:
-            base = self._get_building_network_base(building_index)
-            network_number = base + self.BUILDING_AHU_BASE_OFFSET + (ahu_index * 100)
-            network_name = f"ahu-{ahu_name.lower()}-bldg{building_index + 1}"
-        else:
-            network_number = self.network_number_base + self.AHU_NETWORK_BASE + (ahu_index * 100)
-            network_name = f"ahu-{ahu_name.lower()}"
+        network_number = self.network_number_base + self.AHU_NETWORK_BASE + (ahu_index * 100)
+        network_name = f"ahu-{ahu_name.lower()}"
 
         print(f"Creating AHU network for {ahu_name} (Network {network_number})")
 
@@ -251,7 +201,6 @@ class BACnetNetworkManager:
             devices=[],
             ahu_name=ahu_name,
             building_name=building_name,
-            building_index=building_index,
         )
 
         self.networks[network_number] = network_info
@@ -459,46 +408,13 @@ class BACnetNetworkManager:
                     return network_info
         return None
 
-    def get_central_plant_network(self, building_index: int = 0) -> Optional[NetworkInfo]:
+    def get_central_plant_network(self) -> Optional[NetworkInfo]:
         """Get the central plant network.
-
-        Args:
-            building_index: Building index for multi-building mode
 
         Returns:
             NetworkInfo for the central plant network, or None if not found
         """
-        if self.multi_building_mode and building_index > 0:
-            base = self._get_building_network_base(building_index)
-            network_number = base + self.BUILDING_CENTRAL_PLANT_OFFSET
-            return self.networks.get(network_number)
         return self.networks.get(self.network_number_base + self.CENTRAL_PLANT_NETWORK)
-
-    def get_networks_for_building(self, building_name: str) -> List[NetworkInfo]:
-        """Get all networks associated with a building.
-
-        Args:
-            building_name: Name of the building
-
-        Returns:
-            List of NetworkInfo objects for the building
-        """
-        return [
-            net_info
-            for net_info in self.networks.values()
-            if net_info.building_name == building_name
-        ]
-
-    def get_building_index(self, building_name: str) -> Optional[int]:
-        """Get the index for a building.
-
-        Args:
-            building_name: Name of the building
-
-        Returns:
-            Building index, or None if not registered
-        """
-        return self.buildings.get(building_name)
 
     def print_network_topology(self):
         """Print a visual representation of the network topology."""
@@ -582,14 +498,11 @@ class BACnetNetworkManager:
         summary: Dict[str, Any] = {
             "total_networks": len(self.networks),
             "total_devices": len(self.all_devices),
-            "multi_building_mode": self.multi_building_mode,
-            "buildings": dict(self.buildings) if self.buildings else {},
             "networks": {
                 net_num: {
                     "name": net_info.name,
                     "ahu": net_info.ahu_name,
                     "building": net_info.building_name,
-                    "building_index": net_info.building_index,
                     "device_count": len(net_info.devices),
                 }
                 for net_num, net_info in self.networks.items()
@@ -601,7 +514,6 @@ class BACnetNetworkManager:
 def create_building_networks_from_brick(
     building_structure: Dict[str, Any],
     network_manager: Optional[BACnetNetworkManager] = None,
-    building_index: int = 0,
     building_name: Optional[str] = None,
 ) -> BACnetNetworkManager:
     """
@@ -622,7 +534,6 @@ def create_building_networks_from_brick(
             - chillers: List of chiller names
             - boilers: List of boiler names
         network_manager: Optional existing manager to add to
-        building_index: Building index for multi-building mode (0 for single building)
         building_name: Optional building name for identification
 
     Returns:
@@ -630,10 +541,6 @@ def create_building_networks_from_brick(
     """
     if network_manager is None:
         network_manager = BACnetNetworkManager()
-
-    # Register the building if in multi-building mode
-    if building_name and network_manager.multi_building_mode:
-        network_manager.register_building(building_name)
 
     # Create central plant network if there are central plant devices
     has_central_plant = (
@@ -643,63 +550,12 @@ def create_building_networks_from_brick(
     )
 
     if has_central_plant:
-        network_manager.create_central_plant_network(
-            building_index=building_index, building_name=building_name
-        )
+        network_manager.create_central_plant_network(building_name=building_name)
 
     # Create a network for each AHU
     ahus = building_structure.get("ahus", {})
     for ahu_index, (ahu_name, ahu_data) in enumerate(ahus.items()):
-        network_manager.create_ahu_network(
-            ahu_name, ahu_index, building_index=building_index, building_name=building_name
-        )
-
-    return network_manager
-
-
-def create_campus_networks(
-    campus_structure: "CampusStructure",
-) -> BACnetNetworkManager:
-    """
-    Create a complete BACnet network topology from a CampusStructure.
-
-    This function creates networks for all buildings in the campus,
-    using building-indexed network numbering for multi-building support.
-
-    Args:
-        campus_structure: CampusStructure containing multiple BuildingStructure objects
-
-    Returns:
-        BACnetNetworkManager with networks for all buildings
-    """
-    # Import here to avoid circular import
-
-    # Determine if multi-building mode is needed
-    is_multi_building = campus_structure.is_multi_building()
-
-    network_manager = BACnetNetworkManager(multi_building_mode=is_multi_building)
-
-    # Create networks for each building
-    for building_index, (building_name, building) in enumerate(campus_structure.buildings.items()):
-        # Register the building
-        network_manager.register_building(building_name)
-
-        # Convert BuildingStructure to dict format for compatibility
-        building_dict = {
-            "ahus": building.ahus,
-            "vavs": building.vavs,
-            "zones": building.zones,
-            "chillers": building.chillers,
-            "boilers": building.boilers,
-            "cooling_towers": building.cooling_towers,
-        }
-
-        create_building_networks_from_brick(
-            building_structure=building_dict,
-            network_manager=network_manager,
-            building_index=building_index,
-            building_name=building_name,
-        )
+        network_manager.create_ahu_network(ahu_name, ahu_index, building_name=building_name)
 
     return network_manager
 
