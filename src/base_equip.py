@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import logging
 
 from bacpypes3.app import Application
@@ -134,7 +135,11 @@ class BACPypesApplicationMixin:
         device_id=None,
         device_name=None,
         ip_address=None,
+        bacnet_port=47808,
+        subnet_mask=None,
+        gateway=None,
         network_interface_name=None,
+        network_number=None,
         mac_address=None,
     ):
         """
@@ -148,7 +153,12 @@ class BACPypesApplicationMixin:
             device_id: BACnet device ID (defaults to a hash of the VAV name)
             device_name: BACnet device name (defaults to VAV name)
             ip_address: IP address with CIDR notation (e.g., "172.26.0.20/16") for BACnet/IP mode
+            bacnet_port: UDP port for BACnet/IP mode
+            subnet_mask: Optional IPv4 subnet mask override for BACnet/IP mode
+            gateway: Optional default gateway for BACnet/IP mode. If omitted,
+                uses the first host address in the configured subnet.
             network_interface_name: Name of the virtual network for testing mode
+            network_number: Optional BACnet network number for the network-port object
             mac_address: MAC address for virtual network testing mode
 
         Returns:
@@ -206,43 +216,55 @@ class BACPypesApplicationMixin:
 
         # Add network port configuration based on mode
         if use_ip_mode:
-            # IPv4 BACnet/IP mode for real network communication
-            app_config.append(
-                {
-                    "changes-pending": False,
-                    "ip-address": ip_address.split("/")[0],  # Extract IP without CIDR
-                    "ip-subnet-mask": "255.255.0.0",  # For /16 subnet
-                    "ip-default-gateway": "172.26.0.1",
-                    "bacnet-ip-mode": "normal",  # Normal BACnet/IP mode
-                    "bacnet-ip-udp-port": 47808,
-                    "network-type": "ipv4",
-                    "object-identifier": "network-port,1",
-                    "object-name": "BACnet-IP-Port",
-                    "object-type": "network-port",
-                    "out-of-service": False,
-                    "protocol-level": "bacnet-application",
-                    "reliability": "no-fault-detected",
-                }
+            ip_interface = (
+                ipaddress.IPv4Interface(ip_address)
+                if ip_address and "/" in ip_address
+                else ipaddress.IPv4Interface(f"{ip_address}/16")
             )
+            resolved_subnet_mask = subnet_mask or str(ip_interface.network.netmask)
+            resolved_gateway = gateway or str(next(ip_interface.network.hosts(), ip_interface.ip))
+
+            # IPv4 BACnet/IP mode for real network communication
+            port_config = {
+                "changes-pending": False,
+                "ip-address": str(ip_interface.ip),
+                "ip-subnet-mask": resolved_subnet_mask,
+                "ip-default-gateway": resolved_gateway,
+                "bacnet-ip-mode": "normal",  # Normal BACnet/IP mode
+                "bacnet-ip-udp-port": bacnet_port,
+                "network-type": "ipv4",
+                "object-identifier": "network-port,1",
+                "object-name": "BACnet-IP-Port",
+                "object-type": "network-port",
+                "out-of-service": False,
+                "protocol-level": "bacnet-application",
+                "reliability": "no-fault-detected",
+            }
+            if network_number is not None:
+                port_config["network-number"] = network_number
+                port_config["network-number-quality"] = "configured"
+            app_config.append(port_config)
         elif use_vlan_mode:
             # Virtual network mode - let BACpypes3 connect to existing VLAN
             # Ensure MAC address is properly formatted (even length hex)
             formatted_mac = mac_address if mac_address else "0x01"
             formatted_mac = hex_to_padded_octets(formatted_mac)
 
-            app_config.append(
-                {
-                    "object-identifier": "network-port,1",
-                    "object-name": "VirtualPort",
-                    "object-type": "network-port",
-                    "network-type": "virtual",
-                    "network-interface-name": network_interface_name,
-                    "mac-address": formatted_mac,
-                    "out-of-service": False,
-                    "protocol-level": "bacnet-application",
-                    "reliability": "no-fault-detected",
-                }
-            )
+            port_config = {
+                "object-identifier": "network-port,1",
+                "object-name": "VirtualPort",
+                "object-type": "network-port",
+                "network-type": "virtual",
+                "network-interface-name": network_interface_name,
+                "mac-address": formatted_mac,
+                "out-of-service": False,
+                "protocol-level": "bacnet-application",
+                "reliability": "no-fault-detected",
+            }
+            if network_number is not None:
+                port_config["network-number"] = network_number
+                port_config["network-number-quality"] = "configured"
+            app_config.append(port_config)
 
         try:
             # Create the application using from_json method

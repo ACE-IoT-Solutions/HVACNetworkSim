@@ -19,7 +19,10 @@ Network Architecture (Campus Mode):
 
 Environment Variables:
     BACNET_ADDRESS: Full BACnet address with CIDR (e.g., "172.26.0.20/16")
+    BACNET_DEVICE_ID: Optional BACnet device instance number for simple mode
     BACNET_IP: BACnet IP address (auto-detected if not set)
+    BACNET_NETWORK_NUMBER: Optional BACnet network number for simple mode
+        and the campus building router's BACnet/IP network port
     BACNET_SUBNET: Subnet mask in CIDR notation (default: 16)
     BACNET_PORT: BACnet UDP port (default: 47808)
     SIMULATION_MODE: "simple" or "brick" (default: simple)
@@ -56,6 +59,8 @@ from src.core.env_validation import (  # noqa: E402
     normalize_bacnet_address,
     parse_boolean_value,
     parse_integer_value,
+    validate_bacnet_device_id,
+    validate_bacnet_network_number,
     validate_bacnet_port,
 )
 
@@ -77,6 +82,24 @@ def get_bacnet_port() -> int:
     """Get the BACnet UDP port from the environment."""
 
     return validate_bacnet_port(os.getenv("BACNET_PORT", "47808"))
+
+
+def get_bacnet_device_id() -> int | None:
+    """Get an optional BACnet device instance number from the environment."""
+
+    raw_value = os.getenv("BACNET_DEVICE_ID")
+    if raw_value is None:
+        return None
+    return validate_bacnet_device_id(raw_value)
+
+
+def get_bacnet_network_number() -> int | None:
+    """Get an optional BACnet network number from the environment."""
+
+    raw_value = os.getenv("BACNET_NETWORK_NUMBER")
+    if raw_value is None or raw_value.strip() == "":
+        return None
+    return validate_bacnet_network_number(raw_value)
 
 
 def get_boolean_env(name: str, default: bool = False) -> bool:
@@ -110,7 +133,16 @@ def get_simulation_mode() -> str:
 async def run_simple_simulation():
     """Run a simple VAV box simulation with BACnet integration."""
     bacnet_address = get_bacnet_address()
-    logger.info(f"Starting simple VAV simulation with BACnet address: {bacnet_address}")
+    bacnet_port = get_bacnet_port()
+    device_id = get_bacnet_device_id()
+    network_number = get_bacnet_network_number()
+    logger.info(
+        "Starting simple VAV simulation with BACnet address: %s (port %d)",
+        bacnet_address,
+        bacnet_port,
+    )
+    if network_number is not None:
+        logger.info("Using configured BACnet network number: %d", network_number)
 
     # Create a VAV box with some configuration
     vav = VAVBox(
@@ -130,7 +162,12 @@ async def run_simple_simulation():
 
     # Create BACnet device using auto-detected/configured IP
     logger.info("Creating BACpypes3 device...")
-    device = vav.create_bacpypes3_device(ip_address=bacnet_address)
+    device = vav.create_bacpypes3_device(
+        device_id=device_id,
+        ip_address=bacnet_address,
+        bacnet_port=bacnet_port,
+        network_number=network_number,
+    )
 
     if device is None:
         logger.error("Failed to create BACnet device")
@@ -284,6 +321,7 @@ async def run_brick_simulation(
     # Get BACnet address for the router
     bacnet_address = get_bacnet_address()
     bacnet_port = get_bacnet_port()
+    bacnet_network_number = get_bacnet_network_number()
 
     # Create the IP-to-VLAN router to bridge external traffic to internal VLANs
     # Router device ID is one below the device_id_start for this building
@@ -295,6 +333,7 @@ async def run_brick_simulation(
         bacnet_port=bacnet_port,
         device_id=router_device_id,
         device_name="HVAC-Building-Router",
+        ip_network_number=bacnet_network_number,
     )
 
     if not router:
@@ -342,7 +381,10 @@ async def run_brick_simulation(
 
         # Add to the AHU's network
         app = network_manager.add_device_to_network(
-            equipment=vav, network_info=network_info, device_name=f"VAV-{vav_name}"
+            equipment=vav,
+            network_info=network_info,
+            device_id=vav_data.get("device_id") if isinstance(vav_data, dict) else None,
+            device_name=f"VAV-{vav_name}",
         )
 
         if app:
@@ -382,7 +424,10 @@ async def run_brick_simulation(
 
         # Add to the network
         app = network_manager.add_device_to_network(
-            equipment=ahu, network_info=network_info, device_name=f"AHU-{ahu_name}"
+            equipment=ahu,
+            network_info=network_info,
+            device_id=ahu_data.get("device_id") if isinstance(ahu_data, dict) else None,
+            device_name=f"AHU-{ahu_name}",
         )
 
         if app:
@@ -412,6 +457,11 @@ async def run_brick_simulation(
                 network_manager.add_device_to_network(
                     equipment=boiler,
                     network_info=central_plant_network,
+                    device_id=(
+                        boilers_data.get(boiler_name, {}).get("device_id")
+                        if isinstance(boilers_data.get(boiler_name), dict)
+                        else None
+                    ),
                     device_name=f"Boiler-{boiler_name}",
                 )
 
@@ -432,6 +482,11 @@ async def run_brick_simulation(
             network_manager.add_device_to_network(
                 equipment=chiller,
                 network_info=central_plant_network,
+                device_id=(
+                    chillers_data.get(chiller_name, {}).get("device_id")
+                    if isinstance(chillers_data.get(chiller_name), dict)
+                    else None
+                ),
                 device_name=f"Chiller-{chiller_name}",
             )
 
@@ -621,6 +676,8 @@ async def main():
         # Log configuration after validating env-driven settings.
         bacnet_address = get_bacnet_address()
         bacnet_port = get_bacnet_port()
+        bacnet_device_id = get_bacnet_device_id()
+        bacnet_network_number = get_bacnet_network_number()
         simulation_mode = get_simulation_mode()
         building_name = os.getenv("BUILDING_NAME", "").strip()
         ttl_file = os.getenv("BRICK_TTL_FILE", "")
@@ -628,6 +685,10 @@ async def main():
         logger.info("Configuration:")
         logger.info(f"  BACnet Address: {bacnet_address}")
         logger.info(f"  BACnet Port: {bacnet_port}")
+        if bacnet_device_id is not None:
+            logger.info(f"  BACnet Device ID: {bacnet_device_id}")
+        if bacnet_network_number is not None:
+            logger.info(f"  BACnet Network Number: {bacnet_network_number}")
         logger.info(f"  Simulation Mode: {simulation_mode}")
         if building_name:
             logger.info(f"  Building Name: {building_name}")

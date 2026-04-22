@@ -13,6 +13,8 @@
 # Usage:
 #   ./examples/test_campus.sh                                    # 2-building campus (default)
 #   ./examples/test_campus.sh examples/large_campus.ttl          # 6-building campus
+#   ./examples/test_campus.sh --scenario multi-network           # explicit BACnet network numbers
+#   ./examples/test_campus.sh --scenario multi-network-collisions
 #   ./examples/test_campus.sh --build                            # force rebuild images
 #   ./examples/test_campus.sh --teardown                         # clean up after test
 #
@@ -33,20 +35,40 @@ cd "$PROJECT_ROOT"
 
 # Defaults
 TTL_FILE=""
+SCENARIO="default"
 TEARDOWN=false
 FORCE_BUILD=false
 
 # Parse args: first non-flag argument is the TTL file
-for arg in "$@"; do
-    case "$arg" in
-        --teardown) TEARDOWN=true ;;
-        --build) FORCE_BUILD=true ;;
-        -*) ;; # ignore unknown flags
-        *) TTL_FILE="$arg" ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --teardown)
+            TEARDOWN=true
+            ;;
+        --build)
+            FORCE_BUILD=true
+            ;;
+        --scenario)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --scenario requires a value" >&2
+                exit 1
+            fi
+            SCENARIO="$1"
+            ;;
+        --scenario=*)
+            SCENARIO="${1#*=}"
+            ;;
+        -*)
+            ;;
+        *)
+            TTL_FILE="$1"
+            ;;
     esac
+    shift
 done
 
-TTL_FILE="${TTL_FILE:-examples/multi_building_campus.ttl}"
+DISPLAY_TTL="${TTL_FILE:-<scenario default>}"
 COMPOSE_FILE="docker-compose.campus.yml"
 SIM_WAIT=30  # seconds to stream live logs
 
@@ -97,7 +119,8 @@ echo "  Campus Simulation Test"
 echo "============================================================"
 info "Runtime:      $RUNTIME"
 info "Compose:      $COMPOSE_CMD"
-info "TTL file:     $TTL_FILE"
+info "TTL file:     $DISPLAY_TTL"
+info "Scenario:     $SCENARIO"
 info "Force build:  $FORCE_BUILD"
 info "Teardown:     $TEARDOWN"
 echo "============================================================"
@@ -109,7 +132,11 @@ echo ""
 
 info "Step 1/6: Generating campus configuration..."
 
-python campus/generate_campus.py "$TTL_FILE"
+GENERATOR_CMD=(python campus/generate_campus.py --scenario "$SCENARIO")
+if [ -n "$TTL_FILE" ]; then
+    GENERATOR_CMD+=("$TTL_FILE")
+fi
+"${GENERATOR_CMD[@]}"
 
 if [ ! -f "$COMPOSE_FILE" ]; then
     fail "Compose file not generated: $COMPOSE_FILE"

@@ -94,6 +94,22 @@ print(device_id)
 PY
 }
 
+validate_network_number() {
+    python3 - "$1" <<'PY'
+import sys
+
+try:
+    network_number = int(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+
+if network_number < 0 or network_number > 65534:
+    sys.exit(1)
+
+print(network_number)
+PY
+}
+
 # Normalize BACnet address configuration.
 if [ -n "$BACNET_ADDRESS" ]; then
     if ! NORMALIZED_BACNET_ADDRESS=$(validate_bacnet_address "$BACNET_ADDRESS"); then
@@ -150,6 +166,15 @@ if ! BACNET_DEVICE_ID=$(validate_device_id "$BACNET_DEVICE_ID"); then
     exit 1
 fi
 export BACNET_DEVICE_ID
+
+if [ -n "${BACNET_NETWORK_NUMBER:-}" ]; then
+    if ! BACNET_NETWORK_NUMBER=$(validate_network_number "$BACNET_NETWORK_NUMBER"); then
+        echo "Error: BACNET_NETWORK_NUMBER must be an integer between 0 and 65534"
+        exit 1
+    fi
+    export BACNET_NETWORK_NUMBER
+    echo "BACnet Network Number: $BACNET_NETWORK_NUMBER"
+fi
 
 # Handle BUILDING_NAME for campus multi-container mode
 if [ -n "$BUILDING_NAME" ]; then

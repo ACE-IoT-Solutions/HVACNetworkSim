@@ -30,6 +30,7 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 # Add project root to path so we can import src modules
@@ -47,6 +48,47 @@ def parse_campus(ttl_file: str):
 
 # Base host port for BBMD port mapping (external access): building i gets port BASE + i
 BBMD_HOST_PORT_BASE = 47808
+DEFAULT_CAMPUS_SCENARIO = "default"
+
+
+@dataclass(frozen=True)
+class CampusScenario:
+    default_ttl: str
+    explicit_network_numbers: bool = False
+
+
+CAMPUS_SCENARIOS = {
+    "default": CampusScenario(default_ttl="examples/multi_building_campus.ttl"),
+    "multi-network": CampusScenario(
+        default_ttl="examples/multi_building_campus.ttl",
+        explicit_network_numbers=True,
+    ),
+    "multi-network-collisions": CampusScenario(
+        default_ttl="examples/multi_building_campus_collisions.ttl",
+        explicit_network_numbers=True,
+    ),
+}
+
+
+def resolve_campus_ttl(ttl_file: str | None, scenario: str) -> Path:
+    """Resolve the input TTL path or the built-in example for a scenario."""
+
+    if ttl_file:
+        ttl_path = Path(ttl_file)
+        if not ttl_path.is_absolute():
+            ttl_path = PROJECT_ROOT / ttl_path
+        return ttl_path.resolve()
+
+    scenario_ttl = PROJECT_ROOT / CAMPUS_SCENARIOS[scenario].default_ttl
+    return scenario_ttl.resolve()
+
+
+def get_scenario_network_number(building_index: int, scenario: str) -> int | None:
+    """Return an explicit BACnet network number for scenario-driven campuses."""
+
+    if not CAMPUS_SCENARIOS[scenario].explicit_network_numbers:
+        return None
+    return building_index * 100
 
 
 def yaml_quote(value: str) -> str:
@@ -114,7 +156,11 @@ rules:
 
 
 def generate_compose(
-    campus, ttl_file: str, bbmd_image: str = "ace-acl-bbmd", expose_bacnet: bool = False
+    campus,
+    ttl_file: str,
+    bbmd_image: str = "ace-acl-bbmd",
+    expose_bacnet: bool = False,
+    scenario: str = DEFAULT_CAMPUS_SCENARIO,
 ) -> str:
     """Generate docker-compose.campus.yml content.
 
@@ -138,6 +184,7 @@ def generate_compose(
         "# Auto-generated campus compose file",
         f"# Source: {ttl_relative}",
         f"# Buildings: {num_buildings}",
+        f"# Scenario: {scenario}",
         "",
         "networks:",
     ]
@@ -165,6 +212,7 @@ def generate_compose(
         building_ip = f"10.{i}.0.2"
         sim_ip = f"10.{i}.0.10"
         host_port = BBMD_HOST_PORT_BASE + i
+        network_number = get_scenario_network_number(i, scenario)
         safe_name = re.sub(r"[^a-z0-9_.]+", "_", building_name.lower()).strip("_")
         if not safe_name:
             safe_name = f"building_{i}"
@@ -189,6 +237,13 @@ def generate_compose(
                 f"        ipv4_address: {building_ip}",
             ]
         )
+        if network_number is not None:
+            lines.extend(
+                [
+                    "    environment:",
+                    f'      BACNET_NETWORK_NUMBER: "{network_number}"',
+                ]
+            )
         if expose_bacnet:
             lines.extend(
                 [
@@ -248,6 +303,8 @@ def generate_compose(
             f"      BUILDING_NAME: {yaml_quote(building_name)}",
             '      BACNET_SUBNET: "24"',
         ]
+        if network_number is not None:
+            sim_lines.append(f'      BACNET_NETWORK_NUMBER: "{network_number}"')
         if campus_routes:
             sim_lines.append(f"      CAMPUS_ROUTES: {yaml_quote(campus_routes)}")
         if num_buildings > 1:
@@ -321,7 +378,17 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate campus compose and BBMD config files from a Brick TTL file"
     )
-    parser.add_argument("ttl_file", help="Campus Brick TTL file")
+    parser.add_argument(
+        "ttl_file",
+        nargs="?",
+        help="Campus Brick TTL file (optional when using a built-in scenario example)",
+    )
+    parser.add_argument(
+        "--scenario",
+        choices=sorted(CAMPUS_SCENARIOS),
+        default=DEFAULT_CAMPUS_SCENARIO,
+        help="Campus scenario profile to generate",
+    )
     parser.add_argument(
         "--expose-bacnet",
         action="store_true",
@@ -329,18 +396,14 @@ def main():
     )
     args = parser.parse_args()
 
-    ttl_file = args.ttl_file
-    ttl_path = Path(ttl_file)
-
-    # Resolve relative to project root if not absolute
-    if not ttl_path.is_absolute():
-        ttl_path = PROJECT_ROOT / ttl_path
+    ttl_path = resolve_campus_ttl(args.ttl_file, args.scenario)
 
     if not ttl_path.exists():
         print(f"Error: TTL file not found: {ttl_path}", file=sys.stderr)
         sys.exit(1)
 
     print(f"Parsing campus TTL: {ttl_path}")
+    print(f"Scenario: {args.scenario}")
     campus = parse_campus(str(ttl_path))
 
     buildings = list(campus.buildings.items())
@@ -369,7 +432,12 @@ def main():
         print(f"  Written: {bbmd_dir}/acl_rules.yaml")
 
     # Generate docker-compose.campus.yml
-    compose_content = generate_compose(campus, str(ttl_path), expose_bacnet=args.expose_bacnet)
+    compose_content = generate_compose(
+        campus,
+        str(ttl_path),
+        expose_bacnet=args.expose_bacnet,
+        scenario=args.scenario,
+    )
     compose_path = PROJECT_ROOT / "docker-compose.campus.yml"
     compose_path.write_text(compose_content)
     print(f"\nWritten: {compose_path}")

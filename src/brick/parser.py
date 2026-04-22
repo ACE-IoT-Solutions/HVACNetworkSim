@@ -37,8 +37,7 @@ class BrickParser:
         """
         if not RDFLIB_AVAILABLE:
             raise ImportError(
-                "rdflib is required to parse BRICK schema files. "
-                "Install with: pip install rdflib"
+                "rdflib is required to parse BRICK schema files. Install with: pip install rdflib"
             )
 
         self.file_path = file_path
@@ -51,6 +50,7 @@ class BrickParser:
         # Define namespaces
         self.BRICK = Namespace("https://brickschema.org/schema/Brick#")
         self.REF = Namespace("https://brickschema.org/schema/Brick/ref#")
+        self.BACNET = Namespace("http://data.ashrae.org/bacnet/2020#")
 
         # Try to extract the main namespace from the file
         self.main_ns = None
@@ -66,7 +66,17 @@ class BrickParser:
         # Bind namespaces for queries
         self.g.bind("brick", self.BRICK)
         self.g.bind("ref", self.REF)
+        self.g.bind("bacnet", self.BACNET)
         self.g.bind("main", self.main_ns)
+
+    def _extract_bacnet_device_id(self, equipment: Any) -> Optional[int]:
+        """Extract an optional BACnet device instance annotation from equipment."""
+
+        for value in self.g.objects(equipment, self.BACNET["deviceId"]):
+            match = re.search(r"(\d+)", str(value))
+            if match:
+                return int(match.group(1))
+        return None
 
     def extract_building_info(self) -> dict[str, Any]:
         """Extract basic building information.
@@ -117,6 +127,9 @@ class BrickParser:
 
             # Initialize AHU entry
             ahu_info[ahu_id] = {"id": ahu_id, "feeds": [], "points": [], "fed_by": []}
+            device_id = self._extract_bacnet_device_id(ahu)
+            if device_id is not None:
+                ahu_info[ahu_id]["device_id"] = device_id
 
             # Get VAV boxes fed by this AHU
             for vav in self.g.objects(ahu, self.BRICK.feeds):
@@ -159,6 +172,9 @@ class BrickParser:
                 "points": [],
                 "has_reheat": False,
             }
+            device_id = self._extract_bacnet_device_id(vav)
+            if device_id is not None:
+                vav_info[vav_id]["device_id"] = device_id
 
             # Get zones fed by this VAV
             for zone in self.g.objects(vav, self.BRICK.feeds):
@@ -239,6 +255,9 @@ class BrickParser:
 
             # Initialize chiller entry
             chiller_info[chiller_id] = {"id": chiller_id, "points": []}
+            device_id = self._extract_bacnet_device_id(chiller)
+            if device_id is not None:
+                chiller_info[chiller_id]["device_id"] = device_id
 
             # Get data points related to this chiller
             for point in self.g.objects(chiller, self.BRICK.hasPoint):
@@ -280,6 +299,9 @@ class BrickParser:
         for boiler in self.g.subjects(RDF.type, self.BRICK.Boiler):
             boiler_id = str(boiler).split("#")[-1]
             boiler_info[boiler_id] = {"id": boiler_id, "points": []}
+            device_id = self._extract_bacnet_device_id(boiler)
+            if device_id is not None:
+                boiler_info[boiler_id]["device_id"] = device_id
 
             # Get data points related to this boiler
             for point in self.g.objects(boiler, self.BRICK.hasPoint):

@@ -64,6 +64,33 @@ Helper for configuring BACnet device settings.
 ### `ip-to-vlan.py`
 Network bridge between IP and virtual LAN for BACnet testing.
 
+## Campus Examples
+
+### `multi_building_campus.ttl`
+Two-building campus example used by the default `./hvac-sim --campus` flow.
+
+### `multi_building_campus_collisions.ttl`
+Two-building campus example for multi-network testing. It uses explicit `bacnet:deviceId` annotations so one device in each building advertises the same BACnet device instance number on different networks.
+
+### `large_campus.ttl`
+Larger multi-building campus example for scale and layout testing.
+
+### `test_campus.sh`
+End-to-end helper for generating campus compose files, building images, starting the campus, and validating container health.
+
+Examples:
+
+```bash
+# Default built-in campus scenario
+./examples/test_campus.sh
+
+# Explicit BACnet network numbers on the standard campus example
+./examples/test_campus.sh --scenario multi-network
+
+# Collision scenario using the checked-in example TTL
+./examples/test_campus.sh --scenario multi-network-collisions
+```
+
 ## Archived Examples
 
 The `archive/` directory contains older examples that have been superseded:

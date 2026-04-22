@@ -10,6 +10,7 @@ ALLOWED_EXTRA_ENV_VARS = frozenset(
         "BACNET_ADDRESS",
         "BACNET_DEVICE_ID",
         "BACNET_IP",
+        "BACNET_NETWORK_NUMBER",
         "BACNET_PORT",
         "BACNET_SUBNET",
     }
@@ -99,6 +100,14 @@ def validate_bacnet_device_id(value: str | int, *, variable_name: str = "BACNET_
     return parse_integer_value(value, variable_name=variable_name, min_value=0, max_value=4_194_303)
 
 
+def validate_bacnet_network_number(
+    value: str | int, *, variable_name: str = "BACNET_NETWORK_NUMBER"
+) -> int:
+    """Parse and validate a BACnet network number."""
+
+    return parse_integer_value(value, variable_name=variable_name, min_value=0, max_value=65_534)
+
+
 def normalize_bacnet_address(
     *,
     address: str | None = None,
@@ -147,6 +156,10 @@ def parse_extra_env_var(key: str, value: str) -> tuple[str, str]:
     elif normalized_key == "BACNET_DEVICE_ID":
         normalized_value = str(
             validate_bacnet_device_id(normalized_value, variable_name=normalized_key)
+        )
+    elif normalized_key == "BACNET_NETWORK_NUMBER":
+        normalized_value = str(
+            validate_bacnet_network_number(normalized_value, variable_name=normalized_key)
         )
 
     return normalized_key, normalized_value

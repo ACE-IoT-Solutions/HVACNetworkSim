@@ -22,7 +22,8 @@ The CLI auto-detects Podman or Docker, builds the image if needed, and sets up a
 Security defaults:
 - Host networking requires `--allow-host-network`.
 - Campus BBMD host ports and foreign-device registration require `--expose-campus-bacnet`.
-- `-e/--env` only accepts `BACNET_ADDRESS`, `BACNET_IP`, `BACNET_SUBNET`, `BACNET_PORT`, and `BACNET_DEVICE_ID`.
+- `-e/--env` only accepts `BACNET_ADDRESS`, `BACNET_IP`, `BACNET_SUBNET`, `BACNET_PORT`, `BACNET_DEVICE_ID`, and `BACNET_NETWORK_NUMBER`.
+- Custom script execution requires both `--custom-script` and `--allow-custom-script`.
 
 ### CLI Options
 
@@ -44,7 +45,8 @@ Options:
   --allow-custom-script Explicitly allow arbitrary custom script execution
 
 Campus simulation:
-  --campus TTL_FILE     Run multi-container campus simulation
+  --campus [TTL_FILE]   Run multi-container campus simulation
+  --campus-scenario S   Select a built-in campus scenario
   --campus-stop         Stop the running campus simulation
   --campus-logs         Show logs from the campus simulation
 ```
@@ -65,11 +67,20 @@ Campus simulation:
 # Use host networking for BACnet discovery
 ./hvac-sim --network host --allow-host-network bldg36.ttl
 
+# Run a simple device that advertises BACnet network 100
+./hvac-sim -e BACNET_NETWORK_NUMBER=100 --device-id 100
+
 # Stop the running simulation
 ./hvac-sim --stop
 
 # Run multi-container campus simulation
 ./hvac-sim --campus examples/multi_building_campus.ttl
+
+# Run the built-in multi-network campus scenario
+./hvac-sim --campus --campus-scenario multi-network
+
+# Run the built-in collision scenario
+./hvac-sim --campus --campus-scenario multi-network-collisions
 
 # Run a custom script with explicit acknowledgement
 ./hvac-sim --custom-script examples/example_simulation.py --allow-custom-script
@@ -103,6 +114,7 @@ Each building gets a dedicated range of 1000 network numbers:
 | File | Buildings | AHUs | VAVs | Description |
 |------|-----------|------|------|-------------|
 | `multi_building_campus.ttl` | 2 | 2 | 7 | Small demo with 2 buildings |
+| `multi_building_campus_collisions.ttl` | 2 | 2 | 2 | Checked-in collision scenario with duplicate `bacnet:deviceId 100` across buildings |
 | `large_campus.ttl` | 6 | 12 | 108 | Full campus simulation |
 
 ### Running Multi-Building Simulations
@@ -113,12 +125,59 @@ Campus mode runs each building in its own container with real IP subnets and ext
 # Generate compose file, build images, and start the campus
 ./hvac-sim --campus examples/multi_building_campus.ttl
 
+# Use the default built-in campus example
+./hvac-sim --campus
+
+# Use the built-in multi-network scenario (explicit BACnet network numbers)
+./hvac-sim --campus --campus-scenario multi-network
+
+# Use the built-in multi-network collision scenario
+./hvac-sim --campus --campus-scenario multi-network-collisions
+
 # View logs / stop
 ./hvac-sim --campus-logs
 ./hvac-sim --campus-stop
 ```
 
 Campus mode requires the `ace-acl-bbmd` project as a sibling directory. The build patches its Dockerfile to use the `uv` base image and adds `--network=host` to work around Podman's default build isolation.
+
+Built-in campus scenarios:
+
+- `default`: uses `examples/multi_building_campus.ttl`
+- `multi-network`: uses the standard two-building example and assigns explicit BACnet network numbers `100`, `200`, ...
+- `multi-network-collisions`: uses `examples/multi_building_campus_collisions.ttl` and assigns explicit BACnet network numbers `100`, `200`, ...
+
+In the scenario-driven campus modes, `BACNET_NETWORK_NUMBER` is applied to each building container's external BACnet/IP router port so downstream tests can target stable non-zero network numbers.
+
+## Direct Multi-Network Harness
+
+For downstream tests that need a multi-homed edge process instead of BBMD-routed reachability, use [`docker-compose.multihomed.yml`](docker-compose.multihomed.yml). This topology keeps the BACnet networks isolated:
+
+- `sim1` only joins `building1` (`10.11.0.0/24`) and advertises `BACNET_NETWORK_NUMBER=100`
+- `sim2` only joins `building2` (`10.12.0.0/24`) and advertises `BACNET_NETWORK_NUMBER=200`
+- both sims intentionally use `BACNET_DEVICE_ID=100` to exercise duplicate device IDs on different networks
+- no BBMDs, no `campus-router`, and no published BACnet host ports
+
+Bring it up with:
+
+```bash
+podman compose -f docker-compose.multihomed.yml up --build
+```
+
+Your downstream edge container should attach to both `building1` and `building2` in its own compose file. No other service in this template bridges the two networks.
+
+### BACnet Device ID Annotations In Brick
+
+Brick campus examples can now carry explicit BACnet device instance numbers with the ASHRAE BACnet namespace. When present, those values override the simulator's usual auto-assigned per-building sequence for the annotated equipment.
+
+```turtle
+@prefix bacnet: <http://data.ashrae.org/bacnet/2020#> .
+
+campus:Building1_AHU01 a brick:Air_Handler_Unit ;
+    bacnet:deviceId 100 .
+```
+
+This is how `examples/multi_building_campus_collisions.ttl` creates the duplicate-`device_id` scenario across separate buildings.
 
 ### Large Campus Layout
 
@@ -180,6 +239,7 @@ podman run --rm -it -p 47808:47808/udp \
 | `BACNET_SUBNET` | 16 | Subnet mask bits (e.g., 16 = /16) |
 | `BACNET_PORT` | 47808 | BACnet UDP port |
 | `BACNET_DEVICE_ID` | 599 | BACnet device instance ID |
+| `BACNET_NETWORK_NUMBER` | - | Optional BACnet network number for the device's network-port object |
 | `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
 | `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode; use `--custom-script`) |
@@ -287,8 +347,12 @@ examples/
 ├── simple_vav.py           # Basic VAV example
 ├── complete_building.py    # Full building simulation
 ├── multi_building_campus.ttl  # 2-building demo (7 VAVs)
+├── multi_building_campus_collisions.ttl  # Duplicate device-id campus example
 ├── large_campus.ttl        # Full campus (6 buildings, 108 VAVs)
+├── test_campus.sh          # End-to-end campus compose test helper
 └── ...                     # Additional examples
+
+docker-compose.multihomed.yml  # Direct multi-network harness without BBMDs
 
 tests/
 ├── test_*.py               # Unit tests
@@ -416,11 +480,15 @@ uv run pytest --cov=src
 - Central plant equipment with performance curves
 - Standardized process variable interface
 - Automatic BACnet point generation with proper engineering units
+- Optional explicit BACnet network numbers on simple-mode devices and campus router IP ports
 - COV (Change of Value) notifications on all simulated points
 - Router diagnostic counters (packets routed, request counts, uptime)
 - Configuration via YAML or Python dataclasses
 - Comprehensive test suite with performance benchmarks
 - Multi-container campus mode with real IP subnets and ace-acl-bbmd
+- Built-in campus scenarios for default, multi-network, and collision-focused test harnesses
+- Checked-in Brick collision example with explicit `bacnet:deviceId` annotations
+- Hardened container defaults for host networking, campus exposure, and custom script execution
 - Brick schema support for equipment topology
 
 ## Requirements

@@ -15,6 +15,9 @@ Usage:
     # Run multi-container campus simulation
     ./hvac-sim --campus examples/multi_building_campus.ttl
 
+    # Run the built-in multi-network collision campus scenario
+    ./hvac-sim --campus --campus-scenario multi-network-collisions
+
     # List available brick files
     ./hvac-sim --list
 """
@@ -41,6 +44,7 @@ DEFAULT_PORT = 47808
 BRICK_MOUNT_PATH = "/app/brick_schemas"
 CUSTOM_SCRIPT_MOUNT_PATH = "/app/custom_scripts"
 CAMPUS_COMPOSE_FILE = "docker-compose.campus.yml"
+CAMPUS_SCENARIOS = ("default", "multi-network", "multi-network-collisions")
 
 
 def find_brick_files(search_dir: Path = None) -> list[Path]:
@@ -410,7 +414,11 @@ def build_bbmd_image(runtime: str, force: bool = False) -> bool:
     return True
 
 
-def run_campus_generate(ttl_file: str, expose_bacnet: bool = False) -> bool:
+def run_campus_generate(
+    ttl_file: str | None,
+    expose_bacnet: bool = False,
+    scenario: str = "default",
+) -> bool:
     """Run the campus generator script."""
     script_dir = Path(__file__).parent
     generator = script_dir / "campus" / "generate_campus.py"
@@ -419,17 +427,22 @@ def run_campus_generate(ttl_file: str, expose_bacnet: bool = False) -> bool:
         print(f"Error: Campus generator not found: {generator}", file=sys.stderr)
         return False
 
-    cmd = [sys.executable, str(generator)]
+    cmd = [sys.executable, str(generator), "--scenario", scenario]
     if expose_bacnet:
         cmd.append("--expose-bacnet")
-    cmd.append(ttl_file)
+    if ttl_file:
+        cmd.append(ttl_file)
 
     result = subprocess.run(cmd, cwd=script_dir)
     return result.returncode == 0
 
 
 def run_campus(
-    runtime: str, ttl_file: str, build: bool = False, expose_bacnet: bool = False
+    runtime: str,
+    ttl_file: str | None,
+    build: bool = False,
+    expose_bacnet: bool = False,
+    scenario: str = "default",
 ) -> int:
     """Generate and start a campus simulation."""
     script_dir = Path(__file__).parent
@@ -437,7 +450,7 @@ def run_campus(
 
     # Generate compose and configs
     print("Generating campus configuration...")
-    if not run_campus_generate(ttl_file, expose_bacnet=expose_bacnet):
+    if not run_campus_generate(ttl_file, expose_bacnet=expose_bacnet, scenario=scenario):
         return 1
 
     if not compose_file.exists():
@@ -526,6 +539,9 @@ Examples:
   %(prog)s --list                   List available brick schema files
   %(prog)s -d bldg36.ttl            Run in background (detached)
   %(prog)s --port 47809 bldg36.ttl  Use custom BACnet port
+  %(prog)s --campus                 Run the default built-in campus example
+  %(prog)s --campus --campus-scenario multi-network
+                                    Run the built-in multi-network campus scenario
         """,
     )
 
@@ -577,7 +593,7 @@ Examples:
         "--env",
         action="append",
         metavar="KEY=VALUE",
-        help="Set additional BACnet runtime variables (BACNET_ADDRESS/IP/SUBNET/PORT/DEVICE_ID only)",
+        help="Set additional BACnet runtime variables (BACNET_ADDRESS/IP/SUBNET/PORT/DEVICE_ID/NETWORK_NUMBER only)",
     )
 
     parser.add_argument(
@@ -595,8 +611,17 @@ Examples:
     # Campus mode options
     parser.add_argument(
         "--campus",
+        nargs="?",
+        const="",
         metavar="TTL_FILE",
-        help="Run multi-container campus simulation from a campus TTL file",
+        help="Run multi-container campus simulation (omit TTL to use the scenario example)",
+    )
+
+    parser.add_argument(
+        "--campus-scenario",
+        choices=CAMPUS_SCENARIOS,
+        default="default",
+        help="Campus scenario profile to generate when using --campus",
     )
 
     parser.add_argument(
@@ -635,12 +660,13 @@ Examples:
     if args.campus_logs:
         return campus_logs(runtime)
 
-    if args.campus:
+    if args.campus is not None:
         return run_campus(
             runtime,
-            args.campus,
+            args.campus or None,
             build=args.build,
             expose_bacnet=args.expose_campus_bacnet,
+            scenario=args.campus_scenario,
         )
 
     # Handle --stop

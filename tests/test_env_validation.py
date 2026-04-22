@@ -8,6 +8,7 @@ from src.core.env_validation import (
     normalize_bacnet_address,
     parse_boolean_value,
     parse_extra_env_var,
+    validate_bacnet_network_number,
 )
 
 
@@ -42,6 +43,15 @@ class TestEnvValidation(unittest.TestCase):
         key, value = parse_extra_env_var("bacnet_port", "47809")
         self.assertEqual(key, "BACNET_PORT")
         self.assertEqual(value, "47809")
+
+    def test_parse_extra_env_var_validates_network_number(self):
+        key, value = parse_extra_env_var("bacnet_network_number", "200")
+        self.assertEqual(key, "BACNET_NETWORK_NUMBER")
+        self.assertEqual(value, "200")
+
+    def test_validate_bacnet_network_number_rejects_out_of_range_value(self):
+        with self.assertRaises(EnvironmentValidationError):
+            validate_bacnet_network_number("65535")
 
     def test_format_container_command_redacts_env_values(self):
         command = [

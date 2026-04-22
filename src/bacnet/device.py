@@ -17,10 +17,11 @@ Usage:
 """
 
 import hashlib
+import ipaddress
 import logging
 from dataclasses import dataclass
-from importlib.metadata import version, PackageNotFoundError
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from src.core.constants import (
     BACNET_DEFAULT_PORT,
@@ -124,8 +125,8 @@ class BACnetDeviceConfig:
         device_id: BACnet device instance number (auto-generated if None)
         device_name: BACnet device name
         ip_address: IP address with optional CIDR (e.g., "172.26.0.20/16")
-        subnet_mask: Subnet mask (default "255.255.0.0")
-        gateway: Default gateway IP
+        subnet_mask: Subnet mask (auto-derived from ip_address if omitted)
+        gateway: Default gateway IP (auto-derived from ip_address if omitted)
         port: BACnet/IP UDP port (default 47808)
         vlan_name: Virtual LAN name for testing
         mac_address: MAC address for virtual network
@@ -136,11 +137,12 @@ class BACnetDeviceConfig:
     device_id: Optional[int] = None
     device_name: Optional[str] = None
     ip_address: Optional[str] = None
-    subnet_mask: str = "255.255.0.0"
-    gateway: str = "172.26.0.1"
+    subnet_mask: Optional[str] = None
+    gateway: Optional[str] = None
     port: int = BACNET_DEFAULT_PORT
     vlan_name: Optional[str] = None
     mac_address: Optional[str] = None
+    network_number: Optional[int] = None
     model_name: str = "HVAC-Simulator"
     description: str = ""
 
@@ -209,46 +211,56 @@ def _build_device_config(
 
     # Add network port configuration
     if config.is_ip_mode():
-        ip_addr = config.ip_address
-        if ip_addr and "/" in ip_addr:
-            ip_addr = ip_addr.split("/")[0]
-
-        app_config.append(
-            {
-                "changes-pending": False,
-                "ip-address": ip_addr,
-                "ip-subnet-mask": config.subnet_mask,
-                "ip-default-gateway": config.gateway,
-                "bacnet-ip-mode": "normal",
-                "bacnet-ip-udp-port": config.port,
-                "network-type": "ipv4",
-                "object-identifier": "network-port,1",
-                "object-name": "BACnet-IP-Port",
-                "object-type": "network-port",
-                "out-of-service": False,
-                "protocol-level": "bacnet-application",
-                "reliability": "no-fault-detected",
-            }
+        assert config.ip_address is not None
+        ip_interface = (
+            ipaddress.IPv4Interface(config.ip_address)
+            if "/" in config.ip_address
+            else ipaddress.IPv4Interface(f"{config.ip_address}/16")
         )
+        ip_addr = str(ip_interface.ip)
+        subnet_mask = config.subnet_mask or str(ip_interface.network.netmask)
+        gateway = config.gateway or str(next(ip_interface.network.hosts(), ip_interface.ip))
+
+        port_config = {
+            "changes-pending": False,
+            "ip-address": ip_addr,
+            "ip-subnet-mask": subnet_mask,
+            "ip-default-gateway": gateway,
+            "bacnet-ip-mode": "normal",
+            "bacnet-ip-udp-port": config.port,
+            "network-type": "ipv4",
+            "object-identifier": "network-port,1",
+            "object-name": "BACnet-IP-Port",
+            "object-type": "network-port",
+            "out-of-service": False,
+            "protocol-level": "bacnet-application",
+            "reliability": "no-fault-detected",
+        }
+        if config.network_number is not None:
+            port_config["network-number"] = config.network_number
+            port_config["network-number-quality"] = "configured"
+        app_config.append(port_config)
     else:
         # VLAN mode (default for testing)
         vlan_name = config.vlan_name or "vlan"
         mac_address = config.mac_address or "0x01"
         formatted_mac = hex_to_padded_octets(mac_address)
 
-        app_config.append(
-            {
-                "object-identifier": "network-port,1",
-                "object-name": "VirtualPort",
-                "object-type": "network-port",
-                "network-type": "virtual",
-                "network-interface-name": vlan_name,
-                "mac-address": formatted_mac,
-                "out-of-service": False,
-                "protocol-level": "bacnet-application",
-                "reliability": "no-fault-detected",
-            }
-        )
+        port_config = {
+            "object-identifier": "network-port,1",
+            "object-name": "VirtualPort",
+            "object-type": "network-port",
+            "network-type": "virtual",
+            "network-interface-name": vlan_name,
+            "mac-address": formatted_mac,
+            "out-of-service": False,
+            "protocol-level": "bacnet-application",
+            "reliability": "no-fault-detected",
+        }
+        if config.network_number is not None:
+            port_config["network-number"] = config.network_number
+            port_config["network-number-quality"] = "configured"
+        app_config.append(port_config)
 
     return app_config
 

@@ -1,0 +1,54 @@
+version: "3.8"
+
+# Direct multi-homed BACnet/IP test topology.
+# - No BBMDs
+# - No campus router
+# - Cross-network reachability should only be possible for services that are
+#   explicitly attached to both Docker networks (for example, an edge driver)
+
+networks:
+  building1:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.11.0.0/24
+  building2:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.12.0.0/24
+
+services:
+  sim1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: multihomed-sim1
+    networks:
+      building1:
+        ipv4_address: 10.11.0.10
+    environment:
+      SIMULATION_MODE: "simple"
+      BACNET_IP: "10.11.0.10"
+      BACNET_SUBNET: "24"
+      BACNET_DEVICE_ID: "100"
+      BACNET_NETWORK_NUMBER: "100"
+    restart: unless-stopped
+
+  sim2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: multihomed-sim2
+    networks:
+      building2:
+        ipv4_address: 10.12.0.10
+    environment:
+      SIMULATION_MODE: "simple"
+      BACNET_IP: "10.12.0.10"
+      BACNET_SUBNET: "24"
+      BACNET_DEVICE_ID: "100"
+      BACNET_NETWORK_NUMBER: "200"
+    restart: unless-stopped

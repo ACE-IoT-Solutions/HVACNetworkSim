@@ -212,6 +212,7 @@ class BACnetNetworkManager:
         bacnet_port: int = 47808,
         device_id: int = 999,
         device_name: str = "BACnet-Router",
+        ip_network_number: Optional[int] = None,
     ) -> Optional[Any]:
         """
         Create an IP-to-VLAN router that bridges external BACnet/IP traffic
@@ -226,6 +227,8 @@ class BACnetNetworkManager:
             bacnet_port: UDP port for BACnet/IP (default: 47808)
             device_id: BACnet device ID for the router
             device_name: Name for the router device
+            ip_network_number: Optional explicit BACnet network number for the
+                external BACnet/IP network port
 
         Returns:
             The router Application, or None if failed
@@ -249,6 +252,14 @@ class BACnetNetworkManager:
         logger.info(f"  Subnet Mask: {subnet_mask}")
         logger.info(f"  BACnet Port: {bacnet_port}")
         logger.info(f"  Connected VLANs: {len(self.networks)}")
+
+        external_network_number = (
+            ip_network_number
+            if ip_network_number is not None
+            else self.network_number_base
+            if self.network_number_base
+            else self.BACNET_IP_NETWORK
+        )
 
         # Build the router configuration
         router_config = [
@@ -282,9 +293,7 @@ class BACnetNetworkManager:
                 "ip-subnet-mask": subnet_mask,
                 "link-speed": 0.0,
                 "mac-address": f"{ip_addr}:{bacnet_port}",
-                "network-number": self.network_number_base
-                if self.network_number_base
-                else self.BACNET_IP_NETWORK,
+                "network-number": external_network_number,
                 "network-number-quality": "configured",
                 "network-type": "ipv4",
                 "object-identifier": "network-port,1",
@@ -296,10 +305,7 @@ class BACnetNetworkManager:
             },
         ]
 
-        ip_network_number = (
-            self.network_number_base if self.network_number_base else self.BACNET_IP_NETWORK
-        )
-        logger.info(f"    Port 1: BACnet/IP (Network {ip_network_number})")
+        logger.info(f"    Port 1: BACnet/IP (Network {external_network_number})")
 
         # Add a virtual network port for each internal network
         port_id = 2
@@ -377,6 +383,7 @@ class BACnetNetworkManager:
             device_id=device_id,
             device_name=device_name,
             network_interface_name=network_info.name,
+            network_number=network_info.network_number,
             mac_address=mac_address,
         )
 
