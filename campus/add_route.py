@@ -5,7 +5,7 @@ Used in ace-acl-bbmd containers which have Python but not iproute2.
 Equivalent to: ip route add <dest>/<mask> via <gateway>
 
 Usage: python3 add_route.py <dest_ip> <netmask> <gateway_ip>
-Example: python3 add_route.py 10.2.0.0 255.255.255.0 10.1.0.254
+Example: python3 add_route.py 10.2.0.0 255.255.255.0 10.1.0.102
 """
 
 import ctypes

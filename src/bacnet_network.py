@@ -213,6 +213,7 @@ class BACnetNetworkManager:
         device_id: int = 999,
         device_name: str = "BACnet-Router",
         ip_network_number: Optional[int] = None,
+        claimed_network_numbers: Optional[List[int]] = None,
     ) -> Optional[Any]:
         """
         Create an IP-to-VLAN router that bridges external BACnet/IP traffic
@@ -229,11 +230,25 @@ class BACnetNetworkManager:
             device_name: Name for the router device
             ip_network_number: Optional explicit BACnet network number for the
                 external BACnet/IP network port
+            claimed_network_numbers: Optional additional BACnet network numbers
+                for synthetic routed-network claims
 
         Returns:
             The router Application, or None if failed
         """
-        if not self.networks:
+        claimed_network_numbers = claimed_network_numbers or []
+        routed_networks: list[tuple[int, str]] = [
+            (network_number, network_info.name)
+            for network_number, network_info in sorted(self.networks.items())
+        ]
+        seen_networks = {network_number for network_number, _name in routed_networks}
+        for network_number in claimed_network_numbers:
+            if network_number in seen_networks:
+                continue
+            routed_networks.append((network_number, f"claimed-net-{network_number}"))
+            seen_networks.add(network_number)
+
+        if not routed_networks:
             logger.warning("No networks created yet, cannot create router")
             return None
 
@@ -251,7 +266,9 @@ class BACnetNetworkManager:
         logger.info(f"  IP Address: {ip_addr}")
         logger.info(f"  Subnet Mask: {subnet_mask}")
         logger.info(f"  BACnet Port: {bacnet_port}")
-        logger.info(f"  Connected VLANs: {len(self.networks)}")
+        logger.info(f"  Connected VLANs: {len(routed_networks)}")
+        if claimed_network_numbers:
+            logger.info(f"  Additional network claims: {claimed_network_numbers}")
 
         external_network_number = (
             ip_network_number
@@ -309,24 +326,24 @@ class BACnetNetworkManager:
 
         # Add a virtual network port for each internal network
         port_id = 2
-        for network_number, network_info in sorted(self.networks.items()):
+        for network_number, network_name in routed_networks:
             router_config.append(
                 {
                     "changes-pending": False,
                     "mac-address": "0x01",  # Router is always MAC 0x01 on each VLAN
-                    "network-interface-name": network_info.name,
+                    "network-interface-name": network_name,
                     "network-number": network_number,
                     "network-number-quality": "configured",
                     "network-type": "virtual",
                     "object-identifier": f"network-port,{port_id}",
-                    "object-name": f"VLAN-{network_info.name}",
+                    "object-name": f"VLAN-{network_name}",
                     "object-type": "network-port",
                     "out-of-service": False,
                     "protocol-level": "bacnet-application",
                     "reliability": "no-fault-detected",
                 }
             )
-            logger.info(f"    Port {port_id}: {network_info.name} (Network {network_number})")
+            logger.info(f"    Port {port_id}: {network_name} (Network {network_number})")
             port_id += 1
 
         try:
@@ -338,7 +355,7 @@ class BACnetNetworkManager:
             # Instrument with packet counters exposed as BACnet points
             from src.bacnet.router_metrics import instrument_router
 
-            self.router_metrics = instrument_router(router_app, len(self.networks))
+            self.router_metrics = instrument_router(router_app, len(routed_networks))
 
             logger.info(f"Router created with {port_id - 1} network ports")
             return router_app

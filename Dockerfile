@@ -10,7 +10,7 @@ WORKDIR /app
 # Copy project files (uv.lock ensures reproducible dependency resolution)
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
-COPY campus/add_route.py ./campus/add_route.py
+COPY campus/ ./campus/
 COPY examples/ ./examples/
 COPY data/ ./data/
 
@@ -24,8 +24,9 @@ RUN mkdir -p /app/configs /app/brick_schemas
 # Install Python dependencies
 RUN uv sync --no-dev
 
-# Expose BACnet port
+# Expose BACnet and fault-control ports
 EXPOSE 47808/udp
+EXPOSE 9100/tcp
 
 # Set environment variables
 ENV PYTHONPATH=/app:$PYTHONPATH

@@ -22,6 +22,7 @@ The CLI auto-detects Podman or Docker, builds the image if needed, and sets up a
 Security defaults:
 - Host networking requires `--allow-host-network`.
 - Campus BBMD host ports and foreign-device registration require `--expose-campus-bacnet`.
+- Campus fault-control HTTP endpoints are published on `127.0.0.1` only.
 - `-e/--env` only accepts `BACNET_ADDRESS`, `BACNET_IP`, `BACNET_SUBNET`, `BACNET_PORT`, `BACNET_DEVICE_ID`, and `BACNET_NETWORK_NUMBER`.
 - Custom script execution requires both `--custom-script` and `--allow-custom-script`.
 
@@ -82,6 +83,12 @@ Campus simulation:
 # Run the built-in collision scenario
 ./hvac-sim --campus --campus-scenario multi-network-collisions
 
+# Run the built-in BBMD asymmetry scenario
+./hvac-sim --campus --campus-scenario multi-network-bdt-asymmetry
+
+# Run the built-in duplicate-router-claim scenario
+./hvac-sim --campus --campus-scenario multi-network-duplicate-router-claim
+
 # Run a custom script with explicit acknowledgement
 ./hvac-sim --custom-script examples/example_simulation.py --allow-custom-script
 ```
@@ -134,6 +141,12 @@ Campus mode runs each building in its own container with real IP subnets and ext
 # Use the built-in multi-network collision scenario
 ./hvac-sim --campus --campus-scenario multi-network-collisions
 
+# Use the built-in BBMD asymmetry scenario
+./hvac-sim --campus --campus-scenario multi-network-bdt-asymmetry
+
+# Use the built-in duplicate-router-claim scenario
+./hvac-sim --campus --campus-scenario multi-network-duplicate-router-claim
+
 # View logs / stop
 ./hvac-sim --campus-logs
 ./hvac-sim --campus-stop
@@ -146,8 +159,39 @@ Built-in campus scenarios:
 - `default`: uses `examples/multi_building_campus.ttl`
 - `multi-network`: uses the standard two-building example and assigns explicit BACnet network numbers `100`, `200`, ...
 - `multi-network-collisions`: uses `examples/multi_building_campus_collisions.ttl` and assigns explicit BACnet network numbers `100`, `200`, ...
+- `multi-network-bdt-asymmetry`: uses the standard two-building example, assigns explicit BACnet network numbers, and starts `bbmd2` with a one-sided `BBMD_BDT_PEERS` list
+- `multi-network-duplicate-router-claim`: uses the standard two-building example, assigns explicit BACnet network numbers, and starts `sim1` with `ROUTER_CLAIMED_NETWORKS=2100`
 
-In the scenario-driven campus modes, `BACNET_NETWORK_NUMBER` is applied to each building container's external BACnet/IP router port so downstream tests can target stable non-zero network numbers.
+In the scenario-driven campus modes, `BACNET_NETWORK_NUMBER` is applied to each building container's external BACnet/IP router port so downstream tests can target stable non-zero network numbers. The duplicate-router scenario also adds extra virtual router claims without changing the checked-in TTL.
+
+Scanners or drivers that participate directly on one building subnet without foreign-device registration must also route the other building subnets through that building's campus-router address. For example, a scanner on `10.1.0.0/24` needs:
+
+```bash
+ip route add 10.2.0.0/24 via 10.1.0.102
+```
+
+The campus router also keeps the former `.254` address as a compatibility alias, so existing routes via `10.1.0.254` continue to work.
+
+The generated simulator and BBMD containers get these routes automatically. External participant containers need the equivalent route in their own network namespace, or they will broadcast into the remote building but miss the remote unicast I-Am replies.
+
+Campus fault-control endpoints are always available for `simN` and `bbmdN` services:
+
+- `GET /fault/status`
+- `POST /fault/silence`
+- `POST /fault/resume`
+
+Host port mapping is loopback-only:
+
+- `bbmd1` -> `127.0.0.1:19101`, `bbmd2` -> `127.0.0.1:19102`, ...
+- `sim1` -> `127.0.0.1:19201`, `sim2` -> `127.0.0.1:19202`, ...
+
+Example:
+
+```bash
+curl http://127.0.0.1:19101/fault/status
+curl -X POST http://127.0.0.1:19101/fault/silence
+curl -X POST http://127.0.0.1:19202/fault/resume
+```
 
 ## Direct Multi-Network Harness
 
@@ -240,11 +284,14 @@ podman run --rm -it -p 47808:47808/udp \
 | `BACNET_PORT` | 47808 | BACnet UDP port |
 | `BACNET_DEVICE_ID` | 599 | BACnet device instance ID |
 | `BACNET_NETWORK_NUMBER` | - | Optional BACnet network number for the device's network-port object |
+| `ROUTER_CLAIMED_NETWORKS` | - | Optional comma-separated extra BACnet network numbers for the building router to advertise |
 | `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
 | `CUSTOM_SCRIPT` | - | Path to custom Python script (for custom mode; use `--custom-script`) |
 | `ALLOW_CUSTOM_SCRIPT` | false | Required to run `CUSTOM_SCRIPT` in custom mode |
 | `BUILDING_NAME` | - | Building to simulate from a multi-building TTL (campus mode) |
+| `FAULT_CONTROL_PORT` | - | Optional HTTP port for `/fault/status`, `/fault/silence`, and `/fault/resume` |
+| `FAULT_CONTROL_STATE_FILE` | - | Optional file path watched for `1`/`0` silence state changes |
 
 ## Local Development
 

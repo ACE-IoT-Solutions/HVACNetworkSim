@@ -18,6 +18,9 @@ Usage:
     # Run the built-in multi-network collision campus scenario
     ./hvac-sim --campus --campus-scenario multi-network-collisions
 
+    # Run the BBMD asymmetry campus scenario
+    ./hvac-sim --campus --campus-scenario multi-network-bdt-asymmetry
+
     # List available brick files
     ./hvac-sim --list
 """
@@ -44,7 +47,13 @@ DEFAULT_PORT = 47808
 BRICK_MOUNT_PATH = "/app/brick_schemas"
 CUSTOM_SCRIPT_MOUNT_PATH = "/app/custom_scripts"
 CAMPUS_COMPOSE_FILE = "docker-compose.campus.yml"
-CAMPUS_SCENARIOS = ("default", "multi-network", "multi-network-collisions")
+CAMPUS_SCENARIOS = (
+    "default",
+    "multi-network",
+    "multi-network-collisions",
+    "multi-network-bdt-asymmetry",
+    "multi-network-duplicate-router-claim",
+)
 
 
 def find_brick_files(search_dir: Path = None) -> list[Path]:
@@ -542,6 +551,8 @@ Examples:
   %(prog)s --campus                 Run the default built-in campus example
   %(prog)s --campus --campus-scenario multi-network
                                     Run the built-in multi-network campus scenario
+  %(prog)s --campus --campus-scenario multi-network-bdt-asymmetry
+                                    Run the BBMD asymmetry campus scenario
         """,
     )
 

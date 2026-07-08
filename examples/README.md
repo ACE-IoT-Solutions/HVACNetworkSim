@@ -89,7 +89,24 @@ Examples:
 
 # Collision scenario using the checked-in example TTL
 ./examples/test_campus.sh --scenario multi-network-collisions
+
+# BBMD asymmetry scenario
+./examples/test_campus.sh --scenario multi-network-bdt-asymmetry
+
+# Duplicate router claim scenario
+./examples/test_campus.sh --scenario multi-network-duplicate-router-claim
 ```
+
+Generated campus stacks now also expose loopback-only fault-control endpoints:
+
+- `bbmd1` -> `127.0.0.1:19101`, `bbmd2` -> `127.0.0.1:19102`, ...
+- `sim1` -> `127.0.0.1:19201`, `sim2` -> `127.0.0.1:19202`, ...
+
+Each endpoint supports:
+
+- `GET /fault/status`
+- `POST /fault/silence`
+- `POST /fault/resume`
 
 ## Archived Examples
 

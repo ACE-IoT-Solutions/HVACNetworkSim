@@ -15,6 +15,8 @@
 #   ./examples/test_campus.sh examples/large_campus.ttl          # 6-building campus
 #   ./examples/test_campus.sh --scenario multi-network           # explicit BACnet network numbers
 #   ./examples/test_campus.sh --scenario multi-network-collisions
+#   ./examples/test_campus.sh --scenario multi-network-bdt-asymmetry
+#   ./examples/test_campus.sh --scenario multi-network-duplicate-router-claim
 #   ./examples/test_campus.sh --build                            # force rebuild images
 #   ./examples/test_campus.sh --teardown                         # clean up after test
 #

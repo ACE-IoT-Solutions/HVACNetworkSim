@@ -28,6 +28,8 @@ Environment Variables:
     SIMULATION_MODE: "simple" or "brick" (default: simple)
     BRICK_TTL_FILE: Path to Brick TTL file (required for brick mode)
     BUILDING_NAME: Building to simulate from a multi-building TTL (campus mode)
+    ROUTER_CLAIMED_NETWORKS: Optional comma-separated list of additional
+        BACnet network numbers for the building router to advertise
 """
 
 import asyncio
@@ -57,6 +59,7 @@ from src.bacnet_network import (  # noqa: E402
 from src.core.env_validation import (  # noqa: E402
     EnvironmentValidationError,
     normalize_bacnet_address,
+    parse_bacnet_network_number_list,
     parse_boolean_value,
     parse_integer_value,
     validate_bacnet_device_id,
@@ -100,6 +103,15 @@ def get_bacnet_network_number() -> int | None:
     if raw_value is None or raw_value.strip() == "":
         return None
     return validate_bacnet_network_number(raw_value)
+
+
+def get_router_claimed_networks() -> list[int]:
+    """Get optional extra BACnet network numbers for the building router."""
+
+    raw_value = os.getenv("ROUTER_CLAIMED_NETWORKS")
+    if raw_value is None or raw_value.strip() == "":
+        return []
+    return parse_bacnet_network_number_list(raw_value)
 
 
 def get_boolean_env(name: str, default: bool = False) -> bool:
@@ -322,18 +334,22 @@ async def run_brick_simulation(
     bacnet_address = get_bacnet_address()
     bacnet_port = get_bacnet_port()
     bacnet_network_number = get_bacnet_network_number()
+    router_claimed_networks = get_router_claimed_networks()
 
     # Create the IP-to-VLAN router to bridge external traffic to internal VLANs
     # Router device ID is one below the device_id_start for this building
     # (e.g., building 1 = 999, building 2 = 1999)
     router_device_id = device_id_start - 1 if device_id_start > 0 else 999
     logger.info("\nCreating IP-to-VLAN router...")
+    if router_claimed_networks:
+        logger.info("Adding extra router network claims: %s", router_claimed_networks)
     router = network_manager.create_ip_to_vlan_router(
         ip_address=bacnet_address,
         bacnet_port=bacnet_port,
         device_id=router_device_id,
         device_name="HVAC-Building-Router",
         ip_network_number=bacnet_network_number,
+        claimed_network_numbers=router_claimed_networks,
     )
 
     if not router:
@@ -678,6 +694,7 @@ async def main():
         bacnet_port = get_bacnet_port()
         bacnet_device_id = get_bacnet_device_id()
         bacnet_network_number = get_bacnet_network_number()
+        router_claimed_networks = get_router_claimed_networks()
         simulation_mode = get_simulation_mode()
         building_name = os.getenv("BUILDING_NAME", "").strip()
         ttl_file = os.getenv("BRICK_TTL_FILE", "")
@@ -689,6 +706,8 @@ async def main():
             logger.info(f"  BACnet Device ID: {bacnet_device_id}")
         if bacnet_network_number is not None:
             logger.info(f"  BACnet Network Number: {bacnet_network_number}")
+        if router_claimed_networks:
+            logger.info(f"  Router Claimed Networks: {router_claimed_networks}")
         logger.info(f"  Simulation Mode: {simulation_mode}")
         if building_name:
             logger.info(f"  Building Name: {building_name}")

@@ -18,6 +18,8 @@ ALLOWED_EXTRA_ENV_VARS = frozenset(
 
 MANAGED_RUNTIME_ENV_VARS = frozenset(
     {
+        "BBMD_BDT_PEERS",
+        "BBMD_BDT_STALE",
         "BRICK_TTL_FILE",
         "BUILDING_NAME",
         "CAMPUS_ROUTES",
@@ -25,8 +27,11 @@ MANAGED_RUNTIME_ENV_VARS = frozenset(
         "DUPLICATE_DEVICE_IDS",
         "DUPLICATE_NETWORK_NUMBERS",
         "DUPLICATE_ROUTERS",
+        "FAULT_CONTROL_PORT",
+        "FAULT_CONTROL_STATE_FILE",
         "INJECT_ERRORS",
         "MULTI_BUILDING_MODE",
+        "ROUTER_CLAIMED_NETWORKS",
         "SIMULATION_MODE",
     }
 )
@@ -73,6 +78,32 @@ def parse_boolean_value(value: str, *, variable_name: str) -> bool:
     )
 
 
+def parse_integer_list(
+    value: str,
+    *,
+    variable_name: str,
+    min_value: int | None = None,
+    max_value: int | None = None,
+) -> list[int]:
+    """Parse a comma-separated list of validated integers."""
+
+    parts = [part.strip() for part in value.split(",")]
+    if not parts or any(part == "" for part in parts):
+        raise EnvironmentValidationError(
+            f"{variable_name} must be a comma-separated list of integers"
+        )
+
+    return [
+        parse_integer_value(
+            part,
+            variable_name=variable_name,
+            min_value=min_value,
+            max_value=max_value,
+        )
+        for part in parts
+    ]
+
+
 def validate_ipv4_address(value: str, *, variable_name: str) -> str:
     """Validate an IPv4 address string."""
 
@@ -106,6 +137,31 @@ def validate_bacnet_network_number(
     """Parse and validate a BACnet network number."""
 
     return parse_integer_value(value, variable_name=variable_name, min_value=0, max_value=65_534)
+
+
+def parse_bacnet_network_number_list(
+    value: str,
+    *,
+    variable_name: str = "ROUTER_CLAIMED_NETWORKS",
+    allow_zero: bool = False,
+) -> list[int]:
+    """Parse a comma-separated list of BACnet network numbers."""
+
+    network_numbers = parse_integer_list(
+        value,
+        variable_name=variable_name,
+        min_value=0 if allow_zero else 1,
+        max_value=65_534,
+    )
+
+    deduplicated: list[int] = []
+    seen: set[int] = set()
+    for network_number in network_numbers:
+        if network_number in seen:
+            continue
+        seen.add(network_number)
+        deduplicated.append(network_number)
+    return deduplicated
 
 
 def normalize_bacnet_address(

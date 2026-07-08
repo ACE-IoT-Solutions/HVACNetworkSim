@@ -110,6 +110,69 @@ print(network_number)
 PY
 }
 
+validate_network_number_list() {
+    python3 - "$1" <<'PY'
+import sys
+
+parts = [part.strip() for part in sys.argv[1].split(",")]
+if not parts or any(not part for part in parts):
+    sys.exit(1)
+
+validated = []
+seen = set()
+for part in parts:
+    try:
+        network_number = int(part)
+    except ValueError:
+        sys.exit(1)
+
+    if network_number < 1 or network_number > 65534:
+        sys.exit(1)
+    if network_number in seen:
+        continue
+    seen.add(network_number)
+    validated.append(str(network_number))
+
+print(",".join(validated))
+PY
+}
+
+exec_with_fault_control() {
+    if [ -n "${FAULT_CONTROL_PORT:-}" ]; then
+        if ! FAULT_CONTROL_PORT=$(validate_port "$FAULT_CONTROL_PORT"); then
+            echo "Error: FAULT_CONTROL_PORT must be an integer between 1 and 65535"
+            exit 1
+        fi
+        export FAULT_CONTROL_PORT
+        echo "Fault Control Port: $FAULT_CONTROL_PORT"
+    fi
+
+    if [ -n "${FAULT_CONTROL_PORT:-}" ] || [ -n "${FAULT_CONTROL_STATE_FILE:-}" ]; then
+        if [ -n "${FAULT_CONTROL_STATE_FILE:-}" ]; then
+            echo "Fault Control State File: $FAULT_CONTROL_STATE_FILE"
+        fi
+
+        if [ -n "${FAULT_CONTROL_PORT:-}" ] && [ -n "${FAULT_CONTROL_STATE_FILE:-}" ]; then
+            exec /app/.venv/bin/python -u /app/campus/fault_supervisor.py \
+                --control-port "$FAULT_CONTROL_PORT" \
+                --state-file "$FAULT_CONTROL_STATE_FILE" \
+                -- "$@"
+        fi
+
+        if [ -n "${FAULT_CONTROL_PORT:-}" ]; then
+            exec /app/.venv/bin/python -u /app/campus/fault_supervisor.py \
+                --control-port "$FAULT_CONTROL_PORT" \
+                -- "$@"
+        fi
+
+        exec /app/.venv/bin/python -u /app/campus/fault_supervisor.py \
+            --state-file "$FAULT_CONTROL_STATE_FILE" \
+            -- "$@"
+    fi
+
+    exec "$@"
+}
+
 # Normalize BACnet address configuration.
 if [ -n "$BACNET_ADDRESS" ]; then
     if ! NORMALIZED_BACNET_ADDRESS=$(validate_bacnet_address "$BACNET_ADDRESS"); then
@@ -176,6 +239,15 @@ if [ -n "${BACNET_NETWORK_NUMBER:-}" ]; then
     echo "BACnet Network Number: $BACNET_NETWORK_NUMBER"
 fi
 
+if [ -n "${ROUTER_CLAIMED_NETWORKS:-}" ]; then
+    if ! ROUTER_CLAIMED_NETWORKS=$(validate_network_number_list "$ROUTER_CLAIMED_NETWORKS"); then
+        echo "Error: ROUTER_CLAIMED_NETWORKS must be a comma-separated list of integers between 1 and 65534"
+        exit 1
+    fi
+    export ROUTER_CLAIMED_NETWORKS
+    echo "Router Claimed Networks: $ROUTER_CLAIMED_NETWORKS"
+fi
+
 # Handle BUILDING_NAME for campus multi-container mode
 if [ -n "$BUILDING_NAME" ]; then
     echo "Building Name: $BUILDING_NAME (campus multi-container mode)"
@@ -237,11 +309,11 @@ case "$SIMULATION_MODE" in
             exit 1
         fi
         echo "Starting Brick-based simulation with $BRICK_TTL_FILE..."
-        exec /app/.venv/bin/python -u /app/src/main.py
+        exec_with_fault_control /app/.venv/bin/python -u /app/src/main.py
         ;;
     simple)
         echo "Starting simple VAV simulation..."
-        exec /app/.venv/bin/python -u /app/src/main.py
+        exec_with_fault_control /app/.venv/bin/python -u /app/src/main.py
         ;;
     custom)
         # Allow running a custom script
@@ -251,7 +323,7 @@ case "$SIMULATION_MODE" in
         fi
         if [ -n "$CUSTOM_SCRIPT" ] && [ -f "$CUSTOM_SCRIPT" ]; then
             echo "Running custom script: $CUSTOM_SCRIPT"
-            exec /app/.venv/bin/python -u "$CUSTOM_SCRIPT"
+            exec_with_fault_control /app/.venv/bin/python -u "$CUSTOM_SCRIPT"
         else
             echo "Error: CUSTOM_SCRIPT not set or file not found"
             exit 1

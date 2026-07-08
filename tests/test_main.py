@@ -183,6 +183,7 @@ class TestMainSimpleSimulation(unittest.IsolatedAsyncioTestCase):
             {
                 "BACNET_ADDRESS": "10.1.0.10/24",
                 "BACNET_NETWORK_NUMBER": "200",
+                "ROUTER_CLAIMED_NETWORKS": "2100,2200",
             },
             clear=False,
         ):
@@ -205,6 +206,10 @@ class TestMainSimpleSimulation(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             _FakeCampusNetworkManager.last_router_kwargs["ip_network_number"],
             200,
+        )
+        self.assertEqual(
+            _FakeCampusNetworkManager.last_router_kwargs["claimed_network_numbers"],
+            [2100, 2200],
         )
         self.assertIn(("VAV-VAV01", 100, 1100), _FakeCampusNetworkManager.added_devices)
         self.assertIn(("AHU-AHU01", 101, 1100), _FakeCampusNetworkManager.added_devices)

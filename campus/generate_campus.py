@@ -9,13 +9,13 @@ Parses a Brick schema campus TTL file and generates:
 Network architecture (example with 2 buildings):
 
     Building 1 Network (10.1.0.0/24)       Building 2 Network (10.2.0.0/24)
-    ├── BBMD1 (10.1.0.2/24:47808)          ├── BBMD2 (10.2.0.2/24:47808)
-    ├── Sim1 (10.1.0.10)                   ├── Sim2 (10.2.0.10)
-    └── Router (10.1.0.254)                └── Router (10.2.0.254)
+    ├── BBMD1 (10.1.0.100/24:47808)        ├── BBMD2 (10.2.0.100/24:47808)
+    ├── Sim1 (10.1.0.101)                  ├── Sim2 (10.2.0.101)
+    └── Router (10.1.0.102)                └── Router (10.2.0.102)
 
     BBMDs peer via direct IP routing through the campus router:
-    BBMD1 BDT: self (10.1.0.2/24) + peer (10.2.0.2/24)
-    BBMD2 BDT: self (10.2.0.2/24) + peer (10.1.0.2/24)
+    BBMD1 BDT: self (10.1.0.100/24) + peer (10.2.0.100/24)
+    BBMD2 BDT: self (10.2.0.100/24) + peer (10.1.0.100/24)
 
     Campus router enables IP routing between building subnets.
     All containers (sims + BBMDs) have static routes via the router.
@@ -30,12 +30,20 @@ import argparse
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Add project root to path so we can import src modules
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from campus.bbmd_runtime import (  # noqa: E402
+    CAMPUS_BBMD_HOST_ADDRESS,
+    build_bdt_entries,
+    campus_host_ip,
+    get_bbmd_identity,
+    render_bbmd_config,
+)
 
 
 def parse_campus(ttl_file: str):
@@ -48,13 +56,22 @@ def parse_campus(ttl_file: str):
 
 # Base host port for BBMD port mapping (external access): building i gets port BASE + i
 BBMD_HOST_PORT_BASE = 47808
+BBMD_CONTROL_PORT = 9100
+BBMD_CONTROL_HOST_PORT_BASE = 19100
+SIM_CONTROL_PORT = 9100
+SIM_CONTROL_HOST_PORT_BASE = 19200
 DEFAULT_CAMPUS_SCENARIO = "default"
+CAMPUS_SIM_HOST_ADDRESS = 101
+CAMPUS_ROUTER_HOST_ADDRESS = 102
+CAMPUS_ROUTER_COMPAT_HOST_ADDRESS = 254
 
 
 @dataclass(frozen=True)
 class CampusScenario:
     default_ttl: str
     explicit_network_numbers: bool = False
+    bbmd_bdt_peer_overrides: dict[int, tuple[str, ...]] = field(default_factory=dict)
+    router_claim_overrides: dict[int, tuple[int, ...]] = field(default_factory=dict)
 
 
 CAMPUS_SCENARIOS = {
@@ -66,6 +83,20 @@ CAMPUS_SCENARIOS = {
     "multi-network-collisions": CampusScenario(
         default_ttl="examples/multi_building_campus_collisions.ttl",
         explicit_network_numbers=True,
+    ),
+    "multi-network-bdt-asymmetry": CampusScenario(
+        default_ttl="examples/multi_building_campus.ttl",
+        explicit_network_numbers=True,
+        bbmd_bdt_peer_overrides={
+            2: (f"10.2.0.{CAMPUS_BBMD_HOST_ADDRESS}:47808",),
+        },
+    ),
+    "multi-network-duplicate-router-claim": CampusScenario(
+        default_ttl="examples/multi_building_campus.ttl",
+        explicit_network_numbers=True,
+        router_claim_overrides={
+            1: (2100,),
+        },
     ),
 }
 
@@ -91,6 +122,18 @@ def get_scenario_network_number(building_index: int, scenario: str) -> int | Non
     return building_index * 100
 
 
+def get_scenario_router_claims(building_index: int, scenario: str) -> tuple[int, ...]:
+    """Return any extra router claims configured for a scenario."""
+
+    return CAMPUS_SCENARIOS[scenario].router_claim_overrides.get(building_index, ())
+
+
+def get_scenario_bdt_peer_overrides(building_index: int, scenario: str) -> tuple[str, ...] | None:
+    """Return any explicit BDT peer overrides for a scenario."""
+
+    return CAMPUS_SCENARIOS[scenario].bbmd_bdt_peer_overrides.get(building_index)
+
+
 def yaml_quote(value: str) -> str:
     """Quote a scalar safely for YAML output."""
 
@@ -98,7 +141,10 @@ def yaml_quote(value: str) -> str:
 
 
 def generate_bbmd_config(
-    building_index: int, num_buildings: int, expose_bacnet: bool = False
+    building_index: int,
+    num_buildings: int,
+    expose_bacnet: bool = False,
+    peer_entries: tuple[str, ...] | None = None,
 ) -> str:
     """Generate BBMD config YAML for a building.
 
@@ -113,34 +159,15 @@ def generate_bbmd_config(
         building_index: 1-based building index
         num_buildings: Total number of buildings (for peer list)
     """
-    building_ip = f"10.{building_index}.0.2"
-
-    # BDT must include self (required for local rebroadcast of forwarded packets)
-    # and all peer BBMDs via their real building subnet addresses.
-    # Self uses /24 mask (for correct local subnet broadcast).
-    # Peers use /32 mask (unicast to peer - directed broadcasts don't route across subnets).
-    bdt_lines = [f'  - "{building_ip}/24:47808"']  # Self entry with subnet mask
-    for i in range(1, num_buildings + 1):
-        if i != building_index:
-            peer_ip = f"10.{i}.0.2"
-            bdt_lines.append(f'  - "{peer_ip}/32:47808"')  # Peer entry with host mask (unicast)
-    bdt_entries = "\n".join(bdt_lines)
-
-    # BBMD device ID must be unique across the BACnet internetwork.
-    # Router for building N is at N*1000-1 (999, 1999, ...), equipment starts at N*1000.
-    # Place BBMD at N*1000-2 (998, 1998, ...) to avoid collisions.
-    bbmd_device_id = building_index * 1000 - 2
-
-    return f"""bbmd_address: "{building_ip}/24:47808"
-device_id: {bbmd_device_id}
-device_name: "BBMD-Building{building_index}"
-bdt_entries:
-{bdt_entries}
-accept_foreign_devices: {"true" if expose_bacnet else "false"}
-log_level: "INFO"
-enable_metrics: true
-metrics_http_port: 9090
-"""
+    identity = get_bbmd_identity(building_index)
+    bdt_entries = build_bdt_entries(building_index, num_buildings, peer_entries)
+    return render_bbmd_config(
+        bbmd_address=identity.address,
+        device_id=identity.device_id,
+        device_name=identity.device_name,
+        bdt_entries=bdt_entries,
+        accept_foreign_devices=expose_bacnet,
+    )
 
 
 def generate_acl_config() -> str:
@@ -208,23 +235,26 @@ def generate_compose(
     lines.extend(["", "services:"])
 
     # Generate services for each building
-    for i, (building_name, building) in enumerate(buildings, 1):
-        building_ip = f"10.{i}.0.2"
-        sim_ip = f"10.{i}.0.10"
+    for i, (building_name, _building) in enumerate(buildings, 1):
+        building_ip = campus_host_ip(i, CAMPUS_BBMD_HOST_ADDRESS)
+        sim_ip = campus_host_ip(i, CAMPUS_SIM_HOST_ADDRESS)
+        router_ip = campus_host_ip(i, CAMPUS_ROUTER_HOST_ADDRESS)
         host_port = BBMD_HOST_PORT_BASE + i
+        bbmd_control_host_port = BBMD_CONTROL_HOST_PORT_BASE + i
+        sim_control_host_port = SIM_CONTROL_HOST_PORT_BASE + i
         network_number = get_scenario_network_number(i, scenario)
+        router_claims = get_scenario_router_claims(i, scenario)
+        bdt_peer_overrides = get_scenario_bdt_peer_overrides(i, scenario)
+        bbmd_identity = get_bbmd_identity(i)
         safe_name = re.sub(r"[^a-z0-9_.]+", "_", building_name.lower()).strip("_")
         if not safe_name:
             safe_name = f"building_{i}"
 
         # Build route-add commands for the BBMD to reach other building subnets.
-        # Uses a Python helper script since ace-acl-bbmd image lacks iproute2.
-        bbmd_route_cmds = []
+        bbmd_route_specs = []
         for j in range(1, num_buildings + 1):
             if j != i:
-                bbmd_route_cmds.append(
-                    f"python3 /app/config/add_route.py 10.{j}.0.0 255.255.255.0 10.{i}.0.254"
-                )
+                bbmd_route_specs.append(f"10.{j}.0.0:255.255.255.0:{router_ip}")
 
         # BBMD service - on building network, with routes to peer subnets
         lines.extend(
@@ -235,39 +265,68 @@ def generate_compose(
                 "    networks:",
                 f"      building{i}:",
                 f"        ipv4_address: {building_ip}",
+                "    environment:",
+                f'      FAULT_CONTROL_PORT: "{BBMD_CONTROL_PORT}"',
+                '      FAULT_CONTROL_STATE_FILE: "/tmp/bbmd-fault-control.state"',
+                f"      BBMD_ADDRESS: {yaml_quote(bbmd_identity.address)}",
+                f'      BBMD_DEVICE_ID: "{bbmd_identity.device_id}"',
+                f"      BBMD_DEVICE_NAME: {yaml_quote(bbmd_identity.device_name)}",
+                f"      BBMD_ACCEPT_FOREIGN_DEVICES: {'true' if expose_bacnet else 'false'}",
             ]
         )
         if network_number is not None:
-            lines.extend(
-                [
-                    "    environment:",
-                    f'      BACNET_NETWORK_NUMBER: "{network_number}"',
-                ]
-            )
+            lines.append(f'      BACNET_NETWORK_NUMBER: "{network_number}"')
+        if bdt_peer_overrides is not None:
+            lines.append(f"      BBMD_BDT_PEERS: {yaml_quote(','.join(bdt_peer_overrides))}")
+        lines.extend(
+            [
+                "    ports:",
+                f'      - "127.0.0.1:{bbmd_control_host_port}:{BBMD_CONTROL_PORT}/tcp"',
+            ]
+        )
         if expose_bacnet:
-            lines.extend(
-                [
-                    "    ports:",
-                    f'      - "{host_port}:47808/udp"',
-                ]
-            )
+            lines.append(f'      - "{host_port}:47808/udp"')
         lines.extend(
             [
                 "    volumes:",
                 f"      - ./campus/configs/bbmd{i}/bbmd_config.yaml:/app/config/bbmd_config.yaml:ro",
                 f"      - ./campus/configs/bbmd{i}/acl_rules.yaml:/app/config/acl_rules.yaml:ro",
-                "      - ./campus/add_route.py:/app/config/add_route.py:ro",
+                "      - ./campus:/app/campus:ro",
             ]
         )
-        if bbmd_route_cmds and num_buildings > 1:
-            # Wrap the default CMD with Python-based route setup (no iproute2 in image)
-            route_str = " && ".join(bbmd_route_cmds)
+        if num_buildings > 1:
             lines.extend(
                 [
                     "    cap_add:",
                     "      - NET_ADMIN",
-                    '    entrypoint: ["/bin/sh", "-c"]',
-                    f'    command: ["{route_str} && exec ace-acl-bbmd --config /app/config/bbmd_config.yaml --acl /app/config/acl_rules.yaml"]',
+                ]
+            )
+        lines.extend(
+            [
+                "    entrypoint:",
+                "      - python3",
+                "      - /app/campus/run_bbmd_service.py",
+                "    command:",
+                "      - --config",
+                "      - /app/config/bbmd_config.yaml",
+                "      - --acl",
+                "      - /app/config/acl_rules.yaml",
+                "      - --control-port",
+                f'      - "{BBMD_CONTROL_PORT}"',
+                "      - --state-file",
+                "      - /tmp/bbmd-fault-control.state",
+            ]
+        )
+        for route_spec in bbmd_route_specs:
+            lines.extend(
+                [
+                    "      - --route",
+                    f"      - {yaml_quote(route_spec)}",
+                ]
+            )
+        if num_buildings > 1:
+            lines.extend(
+                [
                     "    depends_on:",
                     "      - campus-router",
                 ]
@@ -280,11 +339,11 @@ def generate_compose(
         )
 
         # Build CAMPUS_ROUTES for this sim: routes to all other building subnets
-        # via the router at 10.{this_building}.0.254
+        # via the router in this building subnet.
         routes = []
         for j in range(1, num_buildings + 1):
             if j != i:
-                routes.append(f"10.{j}.0.0/24:10.{i}.0.254")
+                routes.append(f"10.{j}.0.0/24:{router_ip}")
         campus_routes = ",".join(routes)
 
         # HVAC sim service
@@ -302,11 +361,23 @@ def generate_compose(
             f"      BRICK_TTL_FILE: {yaml_quote(f'/app/brick_schemas/{ttl_relative.name}')}",
             f"      BUILDING_NAME: {yaml_quote(building_name)}",
             '      BACNET_SUBNET: "24"',
+            f'      FAULT_CONTROL_PORT: "{SIM_CONTROL_PORT}"',
+            '      FAULT_CONTROL_STATE_FILE: "/tmp/sim-fault-control.state"',
         ]
         if network_number is not None:
             sim_lines.append(f'      BACNET_NETWORK_NUMBER: "{network_number}"')
         if campus_routes:
             sim_lines.append(f"      CAMPUS_ROUTES: {yaml_quote(campus_routes)}")
+        if router_claims:
+            sim_lines.append(
+                f"      ROUTER_CLAIMED_NETWORKS: {yaml_quote(','.join(str(n) for n in router_claims))}"
+            )
+        sim_lines.extend(
+            [
+                "    ports:",
+                f'      - "127.0.0.1:{sim_control_host_port}:{SIM_CONTROL_PORT}/tcp"',
+            ]
+        )
         if num_buildings > 1:
             sim_lines.extend(
                 [
@@ -342,7 +413,7 @@ def generate_compose(
             lines.extend(
                 [
                     f"      building{i}:",
-                    f"        ipv4_address: 10.{i}.0.254",
+                    f"        ipv4_address: {campus_host_ip(i, CAMPUS_ROUTER_HOST_ADDRESS)}",
                 ]
             )
         lines.extend(
@@ -351,21 +422,35 @@ def generate_compose(
                 "      - NET_ADMIN",
                 "    sysctls:",
                 "      - net.ipv4.ip_forward=1",
-                '    entrypoint: ["/bin/sh", "-c"]',
             ]
         )
 
-        # ip_forward=1 via sysctl handles forwarding; no iptables needed in alpine
+        # ip_forward=1 via sysctl handles forwarding; no iptables needed in alpine.
+        # Keep the former .254 router address as an alias so existing scanner
+        # containers with routes via 10.N.0.254 continue to work.
         router_cmds = []
         for i in range(1, num_buildings + 1):
-            router_cmds.append(f"echo 'Connected to building{i}: 10.{i}.0.0/24'")
+            router_cmds.append(
+                "for iface in eth0 eth1 eth2 eth3 eth4 eth5; do "
+                f"ip -4 addr show dev \"$$iface\" 2>/dev/null | grep -q '10.{i}.0.{CAMPUS_ROUTER_HOST_ADDRESS}/24' "
+                f'&& ip addr add 10.{i}.0.{CAMPUS_ROUTER_COMPAT_HOST_ADDRESS}/24 dev "$$iface" 2>/dev/null || true; '
+                "done"
+            )
+            router_cmds.append(
+                f"echo 'Connected to building{i}: 10.{i}.0.0/24 via "
+                f"10.{i}.0.{CAMPUS_ROUTER_HOST_ADDRESS} "
+                f"(compat 10.{i}.0.{CAMPUS_ROUTER_COMPAT_HOST_ADDRESS})'"
+            )
         router_cmds.append("echo 'IP forwarding enabled, campus router ready'")
         router_cmds.append("sleep infinity")
 
-        cmd_str = " && ".join(router_cmds)
         lines.extend(
             [
-                f'    command: ["{cmd_str}"]',
+                "    entrypoint:",
+                "      - /bin/sh",
+                "      - -c",
+                "      - |",
+                "        " + " && \\\n        ".join(router_cmds),
                 "    restart: unless-stopped",
                 "",
             ]
@@ -422,7 +507,12 @@ def main():
         bbmd_dir = configs_dir / f"bbmd{i}"
         bbmd_dir.mkdir(parents=True, exist_ok=True)
 
-        bbmd_config = generate_bbmd_config(i, num_buildings, expose_bacnet=args.expose_bacnet)
+        bbmd_config = generate_bbmd_config(
+            i,
+            num_buildings,
+            expose_bacnet=args.expose_bacnet,
+            peer_entries=get_scenario_bdt_peer_overrides(i, args.scenario),
+        )
         (bbmd_dir / "bbmd_config.yaml").write_text(bbmd_config)
 
         acl_config = generate_acl_config()
