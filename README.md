@@ -45,12 +45,70 @@ Options:
   --custom-script PATH  Run a mounted custom Python script
   --allow-custom-script Explicitly allow arbitrary custom script execution
 
+Scenario generation:
+  --generate-scenario F Generate a Brick TTL scenario file
+  --buildings COUNT      Number of buildings (default: 2)
+  --terminal-units COUNT VAVs per building (default: 10)
+  --multi-network        Assign a subnet and BACnet network to each building
+  --force                Replace an existing scenario file
+
 Campus simulation:
   --campus [TTL_FILE]   Run multi-container campus simulation
   --campus-scenario S   Select a built-in campus scenario
   --campus-stop         Stop the running campus simulation
   --campus-logs         Show logs from the campus simulation
 ```
+
+### Scenario Generator
+
+Generate a ready-to-run Brick scenario without hand-authoring Turtle. The
+smallest command uses the defaults of two buildings and ten VAV terminal units
+per building:
+
+```bash
+./hvac-sim --generate-scenario examples/generated_campus.ttl
+./hvac-sim examples/generated_campus.ttl
+```
+
+Set the building and per-building terminal-unit counts explicitly for a larger
+scenario:
+
+```bash
+./hvac-sim --generate-scenario examples/generated_campus.ttl \
+  --buildings 3 --terminal-units 20
+```
+
+Add `--multi-network` when each building should run in its own container and
+subnet:
+
+```bash
+./hvac-sim --generate-scenario examples/generated_campus.ttl \
+  --buildings 3 --terminal-units 20 --multi-network
+./hvac-sim --campus examples/generated_campus.ttl
+```
+
+The generator sizes one AHU per 10 VAV terminal units, one chiller and boiler
+per 50 VAVs, and one cooling tower per chiller. Counts round up, so every
+terminal unit is served. With `--multi-network`, building N receives subnet
+`10.N.0.0/24` and external BACnet network number `N00`; campus mode reads the
+network-number annotations directly from the generated file.
+
+Generated scenarios contain buildings, AHUs, VAVs, HVAC zones, rooms, standard
+VAV points, chillers, boilers, cooling towers, and their Brick relationships.
+Building counts must be between 1 and 64, and terminal-unit counts must be
+between 1 and 90 per building. These bounds keep generated BACnet network
+numbers within the simulator's reserved ranges.
+
+The output must have a `.ttl` extension. Existing files are protected by
+default; use `--force` when replacement is intentional:
+
+```bash
+./hvac-sim --generate-scenario examples/generated_campus.ttl \
+  --buildings 4 --terminal-units 30 --multi-network --force
+```
+
+Scenario-generation options are only valid with `--generate-scenario`, and the
+generator exits after writing the file without requiring Docker or Podman.
 
 ### Examples
 

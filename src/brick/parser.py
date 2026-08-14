@@ -51,6 +51,7 @@ class BrickParser:
         self.BRICK = Namespace("https://brickschema.org/schema/Brick#")
         self.REF = Namespace("https://brickschema.org/schema/Brick/ref#")
         self.BACNET = Namespace("http://data.ashrae.org/bacnet/2020#")
+        self.SCENARIO = Namespace("urn:hvac-sim:scenario#")
 
         # Try to extract the main namespace from the file
         self.main_ns = None
@@ -356,7 +357,7 @@ class BrickParser:
         campus = CampusStructure()
 
         # Find all building instances
-        buildings_found: list[tuple[Any, str, Optional[int]]] = []
+        buildings_found: list[tuple[Any, str, Optional[int], Optional[int], Optional[str]]] = []
 
         for building in self.g.subjects(RDF.type, self.BRICK.Building):
             building_id = str(building).split("#")[-1]
@@ -370,7 +371,19 @@ class BrickParser:
                         area = int(match.group(1))
                         break
 
-            buildings_found.append((building, building_id, area))
+            network_number = None
+            for value in self.g.objects(building, self.BACNET["networkNumber"]):
+                match = re.search(r"(\d+)", str(value))
+                if match:
+                    network_number = int(match.group(1))
+                    break
+
+            ip_subnet = None
+            for value in self.g.objects(building, self.SCENARIO["ipSubnet"]):
+                ip_subnet = str(value)
+                break
+
+            buildings_found.append((building, building_id, area, network_number, ip_subnet))
 
         # If no buildings found, create a single building from all equipment
         if not buildings_found:
@@ -397,7 +410,7 @@ class BrickParser:
         # Build mapping of equipment to buildings via isPartOf
         equipment_to_building: dict[str, str] = {}
 
-        for building_ref, building_id, _ in buildings_found:
+        for building_ref, building_id, *_ in buildings_found:
             # Find equipment that is part of this building
             for equip in self.g.subjects(self.BRICK.isPartOf, building_ref):
                 equip_id = str(equip).split("#")[-1]
@@ -413,7 +426,7 @@ class BrickParser:
         is_single_building = len(buildings_found) == 1
 
         # Create BuildingStructure for each building
-        for building_ref, building_id, area in buildings_found:
+        for building_ref, building_id, area, network_number, ip_subnet in buildings_found:
             building_ahus: dict[str, dict[str, Any]] = {}
             building_vavs: dict[str, dict[str, Any]] = {}
             building_zones: dict[str, dict[str, Any]] = {}
@@ -454,6 +467,8 @@ class BrickParser:
             building_struct = BuildingStructure(
                 name=building_id,
                 area=area,
+                network_number=network_number,
+                ip_subnet=ip_subnet,
                 ahus=building_ahus,
                 vavs=building_vavs,
                 zones=building_zones,

@@ -37,6 +37,11 @@ from src.core.env_validation import (
     validate_bacnet_device_id,
     validate_bacnet_port,
 )
+from campus.scenario_generator import (
+    DEFAULT_BUILDINGS,
+    DEFAULT_TERMINAL_UNITS,
+    write_scenario,
+)
 
 
 # Container configuration
@@ -553,6 +558,8 @@ Examples:
                                     Run the built-in multi-network campus scenario
   %(prog)s --campus --campus-scenario multi-network-bdt-asymmetry
                                     Run the BBMD asymmetry campus scenario
+  %(prog)s --generate-scenario campus.ttl --buildings 3 --terminal-units 20 --multi-network
+                                    Generate a three-subnet campus scenario
         """,
     )
 
@@ -653,12 +660,90 @@ Examples:
         help="Publish campus BBMD UDP ports and allow foreign-device registration",
     )
 
+    # Scenario generation options
+    parser.add_argument(
+        "--generate-scenario",
+        metavar="OUTPUT.ttl",
+        help="Generate a Brick scenario file and exit",
+    )
+    parser.add_argument(
+        "--buildings",
+        type=int,
+        metavar="COUNT",
+        help=f"Buildings in a generated scenario (default: {DEFAULT_BUILDINGS})",
+    )
+    parser.add_argument(
+        "--terminal-units",
+        type=int,
+        metavar="COUNT",
+        help=(
+            "VAV terminal units per building in a generated scenario "
+            f"(default: {DEFAULT_TERMINAL_UNITS})"
+        ),
+    )
+    parser.add_argument(
+        "--multi-network",
+        action="store_true",
+        help="Give every generated building its own IP subnet and BACnet network number",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace an existing generated scenario file",
+    )
+
     args = parser.parse_args()
 
     # Handle --list
     if args.list:
         list_brick_files()
         return 0
+
+    if args.generate_scenario:
+        building_count = args.buildings if args.buildings is not None else DEFAULT_BUILDINGS
+        terminal_count = (
+            args.terminal_units if args.terminal_units is not None else DEFAULT_TERMINAL_UNITS
+        )
+        try:
+            output_path, size = write_scenario(
+                output=args.generate_scenario,
+                buildings=building_count,
+                terminal_units=terminal_count,
+                multi_network=args.multi_network,
+                force=args.force,
+            )
+        except (ValueError, FileExistsError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+
+        print(f"Generated scenario: {output_path}")
+        print(
+            f"  {building_count} buildings, {size.terminal_units} VAVs/building, "
+            f"{size.ahus} AHUs/building"
+        )
+        print(
+            f"  {size.chillers} chillers, {size.boilers} boilers, and "
+            f"{size.cooling_towers} cooling towers/building"
+        )
+        if args.multi_network:
+            print(f"Run it with: ./hvac-sim --campus {output_path}")
+        else:
+            print(f"Run it with: ./hvac-sim {output_path}")
+        return 0
+
+    generator_only_options = (
+        args.buildings is not None
+        or args.terminal_units is not None
+        or args.multi_network
+        or args.force
+    )
+    if generator_only_options:
+        print(
+            "Error: --buildings, --terminal-units, --multi-network, and --force "
+            "require --generate-scenario",
+            file=sys.stderr,
+        )
+        return 2
 
     # Detect container runtime
     runtime = check_container_runtime()

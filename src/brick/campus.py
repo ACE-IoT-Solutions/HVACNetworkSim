@@ -15,6 +15,8 @@ class BuildingStructure:
     Attributes:
         name: Building identifier/name
         area: Building area in square feet (if available)
+        network_number: External BACnet/IP network number (if annotated)
+        ip_subnet: Building IP subnet (if annotated by the scenario generator)
         ahus: Dictionary mapping AHU IDs to their configuration
         vavs: Dictionary mapping VAV IDs to their configuration
         zones: Dictionary mapping zone IDs to their configuration
@@ -25,6 +27,8 @@ class BuildingStructure:
 
     name: str
     area: Optional[int] = None
+    network_number: Optional[int] = None
+    ip_subnet: Optional[str] = None
     ahus: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     vavs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     zones: Dict[str, Dict[str, Any]] = field(default_factory=dict)

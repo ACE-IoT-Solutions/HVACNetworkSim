@@ -243,6 +243,8 @@ def generate_compose(
         bbmd_control_host_port = BBMD_CONTROL_HOST_PORT_BASE + i
         sim_control_host_port = SIM_CONTROL_HOST_PORT_BASE + i
         network_number = get_scenario_network_number(i, scenario)
+        if network_number is None:
+            network_number = _building.network_number
         router_claims = get_scenario_router_claims(i, scenario)
         bdt_peer_overrides = get_scenario_bdt_peer_overrides(i, scenario)
         bbmd_identity = get_bbmd_identity(i)
