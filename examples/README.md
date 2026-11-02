@@ -1,132 +1,38 @@
 # HVACNetwork Examples
 
-This directory contains example scripts demonstrating HVACNetwork capabilities.
+Run the integration harness through `./hvac-sim` from the repository root.
+It selects the simple, Brick, or campus topology and starts the supported
+simulator. The Python files here illustrate equipment model APIs; they are not
+alternate BACnet or Modbus servers.
 
-## Quick Start Examples
+## Equipment model examples
 
-### `simple_vav.py`
-Basic VAV box simulation without networking. Great for understanding:
-- VAV box creation and configuration
-- Zone thermal modeling
-- Mode transitions (heating/cooling/deadband)
-- PID-controlled damper operation
+- `simple_vav.py` demonstrates one VAV and its thermal behavior without networking.
+- `complete_building.py` demonstrates coordinated AHU, plant, and zone models
+  without networking.
+- `bacnet_device_config.py` contains configuration examples; it has no runtime
+  entry point.
 
-```bash
-uv run python examples/simple_vav.py
-```
+Run a model example with `uv run python examples/simple_vav.py` or
+`uv run python examples/complete_building.py`.
 
-### `complete_building.py`
-Full building simulation with multiple AHUs, chiller, and boiler. Demonstrates:
-- Multi-zone coordination
-- Plant equipment integration
-- Supply air temperature reset
-- Day-long simulation with varying conditions
+## Campus fixtures
 
-```bash
-uv run python examples/complete_building.py
-```
+- `multi_building_campus.ttl`: the default two-building campus fixture.
+- `multi_building_campus_collisions.ttl`: duplicate BACnet device IDs on
+  different networks.
+- `large_campus.ttl`: a six-building scale fixture.
 
-## BACnet Examples
+Start a fixture with `./hvac-sim --campus examples/multi_building_campus.ttl`.
+Use `./hvac-sim --campus --campus-scenario multi-network` for built-in network
+scenarios. See the [main README](../README.md) for all supported options.
+Add `-e MODBUS_MODE=gateway` to publish each building's meter bank on a
+distinct loopback TCP port.
 
-### `example_bacnet_simulation.py`
-Basic BACnet/IP simulation with a single VAV box exposed as a BACnet device.
-
-### `example_bacpypes3_simulation.py`
-More comprehensive BACnet simulation using bacpypes3.
-
-### `example_ahu_simulation.py`
-AHU simulation with BACnet points.
-
-### `example_building_simulation.py`
-Building-level simulation with multiple equipment types.
-
-## Equipment-Specific Examples
-
-### `example_cooling_types.py`
-Demonstrates different AHU cooling types:
-- Chilled water cooling
-- DX (direct expansion) cooling
-
-### `example_thermal_simulation.py`
-Detailed thermal modeling including:
-- Solar gains by window orientation
-- Thermal mass effects
-- Occupancy schedules
-
-### `example_complete_system.py`
-Complete system with chiller plant, cooling tower, and boiler.
-
-## Utility Examples
-
-### `bacnet_device_config.py`
-Helper for configuring BACnet device settings.
-
-### `ip-to-vlan.py`
-Network bridge between IP and virtual LAN for BACnet testing.
-
-## Campus Examples
-
-### `multi_building_campus.ttl`
-Two-building campus example used by the default `./hvac-sim --campus` flow.
-
-### `multi_building_campus_collisions.ttl`
-Two-building campus example for multi-network testing. It uses explicit `bacnet:deviceId` annotations so one device in each building advertises the same BACnet device instance number on different networks.
-
-### `large_campus.ttl`
-Larger multi-building campus example for scale and layout testing.
-
-### `test_campus.sh`
-End-to-end helper for generating campus compose files, building images, starting the campus, and validating container health.
-
-Examples:
+`test_campus.sh` is an end-to-end **test helper**. It generates a campus stack,
+builds images, starts containers, and checks their health and BBMD peering.
+It is separate from the supported simulator launcher:
 
 ```bash
-# Default built-in campus scenario
-./examples/test_campus.sh
-
-# Explicit BACnet network numbers on the standard campus example
-./examples/test_campus.sh --scenario multi-network
-
-# Collision scenario using the checked-in example TTL
-./examples/test_campus.sh --scenario multi-network-collisions
-
-# BBMD asymmetry scenario
-./examples/test_campus.sh --scenario multi-network-bdt-asymmetry
-
-# Duplicate router claim scenario
-./examples/test_campus.sh --scenario multi-network-duplicate-router-claim
+./examples/test_campus.sh --scenario multi-network --teardown
 ```
-
-Generated campus stacks now also expose loopback-only fault-control endpoints:
-
-- `bbmd1` -> `127.0.0.1:19101`, `bbmd2` -> `127.0.0.1:19102`, ...
-- `sim1` -> `127.0.0.1:19201`, `sim2` -> `127.0.0.1:19202`, ...
-
-Each endpoint supports:
-
-- `GET /fault/status`
-- `POST /fault/silence`
-- `POST /fault/resume`
-
-## Archived Examples
-
-The `archive/` directory contains older examples that have been superseded:
-- Large monolithic simulation files
-- Brick-based simulation variants
-- Earlier development iterations
-
-These are kept for reference but are not recommended for new projects.
-
-## Running Examples
-
-Most examples can be run directly:
-
-```bash
-# Using uv (recommended)
-uv run python examples/simple_vav.py
-
-# Or with activated virtual environment
-python examples/simple_vav.py
-```
-
-Some BACnet examples require network configuration. See the main project README for BACnet setup instructions.

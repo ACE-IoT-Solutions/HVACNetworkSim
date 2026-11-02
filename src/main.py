@@ -51,6 +51,7 @@ from src.vav_box import VAVBox  # noqa: E402
 from src.ahu import AirHandlingUnit  # noqa: E402
 from src.boiler import Boiler  # noqa: E402
 from src.chiller import Chiller  # noqa: E402
+from src.modbus_meter import MeterBank, start_meter_server  # noqa: E402
 from src.bacnet_network import (  # noqa: E402
     BACnetNetworkManager,
     create_building_networks_from_brick,
@@ -185,6 +186,24 @@ async def run_simple_simulation():
         logger.error("Failed to create BACnet device")
         return
 
+    meters = None
+    meter_server = None
+    if os.getenv("MODBUS_MODE", "off").strip().lower() != "off":
+        meters = MeterBank(
+            os.getenv("BUILDING_NAME", "Simple Building"),
+            int(os.getenv("MODBUS_UNIT_ID_BASE", "1")),
+        )
+        meters.add(vav)
+        meter_server = await start_meter_server(meters)
+        if meter_server:
+            for index, meter in enumerate(meters.meters):
+                address = (
+                    f"direct port {meter_server.direct_port_base + index}"
+                    if meter_server.mode in ("direct", "both")
+                    else "gateway"
+                )
+                logger.info("Modbus meter %s: unit %d, %s", meter.name, meter.unit_id, address)
+
     logger.info(
         f"Created BACnet device: {device.device_object.objectName} "
         f"(Device ID: {device.device_object.objectIdentifier[1]})"
@@ -236,6 +255,8 @@ async def run_simple_simulation():
 
             vav.zone_temp += temp_change
             await vav.update_bacnet_device()
+            if meters:
+                meters.sample(1.0)
 
             logger.info(
                 f"Time: {hour:02d}:00, Outdoor: {outdoor_temp:.1f}°F, "
@@ -250,6 +271,9 @@ async def run_simple_simulation():
         logger.info("Simulation cancelled")
     except Exception as e:
         logger.exception(f"Error in simulation: {e}")
+    finally:
+        if meter_server:
+            await meter_server.close()
 
 
 async def run_brick_simulation(
@@ -361,6 +385,11 @@ async def run_brick_simulation(
     all_vavs: Dict[str, VAVBox] = {}
     all_ahus: Dict[str, AirHandlingUnit] = {}
     ahu_vav_map: Dict[str, List[VAVBox]] = {}  # AHU name -> list of VAVs
+    meters = (
+        MeterBank(building_name, int(os.getenv("MODBUS_UNIT_ID_BASE", "1")))
+        if os.getenv("MODBUS_MODE", "off").strip().lower() != "off"
+        else None
+    )
 
     # Create VAV boxes and add to appropriate AHU networks
     logger.info("\nCreating VAV boxes on their respective AHU networks:")
@@ -405,6 +434,8 @@ async def run_brick_simulation(
 
         if app:
             all_vavs[vav_name] = vav
+            if meters:
+                meters.add(vav)
 
             # Track VAVs by AHU
             if ahu_name not in ahu_vav_map:
@@ -448,6 +479,8 @@ async def run_brick_simulation(
 
         if app:
             all_ahus[ahu_name] = ahu
+            if meters:
+                meters.add(ahu)
 
     # Create central plant equipment if present
     central_plant_network = network_manager.get_central_plant_network()
@@ -470,7 +503,7 @@ async def run_brick_simulation(
                     condensing=True,
                     turndown_ratio=5.0,
                 )
-                network_manager.add_device_to_network(
+                app = network_manager.add_device_to_network(
                     equipment=boiler,
                     network_info=central_plant_network,
                     device_id=(
@@ -480,6 +513,8 @@ async def run_brick_simulation(
                     ),
                     device_name=f"Boiler-{boiler_name}",
                 )
+                if app and meters:
+                    meters.add(boiler)
 
         # Add chillers
         chillers_data = building_structure.get("chillers", {})
@@ -495,7 +530,7 @@ async def run_brick_simulation(
                 design_chilled_water_flow=1000,
                 design_condenser_water_flow=1200,
             )
-            network_manager.add_device_to_network(
+            app = network_manager.add_device_to_network(
                 equipment=chiller,
                 network_info=central_plant_network,
                 device_id=(
@@ -505,6 +540,23 @@ async def run_brick_simulation(
                 ),
                 device_name=f"Chiller-{chiller_name}",
             )
+            if app and meters:
+                meters.add(chiller)
+
+    meter_server = await start_meter_server(meters) if meters else None
+    if meter_server:
+        if meter_server.mode in ("gateway", "both"):
+            logger.info("Modbus gateway listening on %s:%d", meter_server.host, meter_server.port)
+        for index, meter in enumerate(meters.meters):
+            if meter_server.mode in ("direct", "both"):
+                logger.info(
+                    "Modbus meter %s: unit %d, direct port %d",
+                    meter.name,
+                    meter.unit_id,
+                    meter_server.direct_port_base + index,
+                )
+            else:
+                logger.info("Modbus meter %s: unit %d", meter.name, meter.unit_id)
 
     # Print network topology and device table
     network_manager.print_network_topology()
@@ -570,6 +622,8 @@ async def run_brick_simulation(
             # Run all updates concurrently
             if update_tasks:
                 await asyncio.gather(*update_tasks, return_exceptions=True)
+            if meters:
+                meters.sample(1.0)
 
             # Update router metric points
             if hasattr(network_manager, "router_metrics"):
@@ -594,6 +648,9 @@ async def run_brick_simulation(
 
     except asyncio.CancelledError:
         logger.info("Simulation cancelled")
+    finally:
+        if meter_server:
+            await meter_server.close()
 
 
 async def run_single_building_from_campus():

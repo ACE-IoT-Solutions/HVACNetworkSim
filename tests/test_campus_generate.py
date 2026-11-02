@@ -54,6 +54,16 @@ class TestCampusGenerationSecurity(unittest.TestCase):
         self.assertIn('"47809:47808/udp"', compose)
         self.assertIn("127.0.0.1:19101:9100/tcp", compose)
 
+    def test_modbus_gateway_is_published_per_building_when_enabled(self):
+        compose = generate_compose(
+            self.build_two_building_campus(),
+            "examples/multi_building_campus.ttl",
+            modbus_settings={"MODBUS_MODE": "gateway", "MODBUS_PORT": "5021"},
+        )
+        self.assertEqual(compose.count('MODBUS_MODE: "gateway"'), 2)
+        self.assertIn("127.0.0.1:15021:5021/tcp", compose)
+        self.assertIn("127.0.0.1:15022:5021/tcp", compose)
+
     def test_multi_network_scenario_assigns_explicit_network_numbers(self):
         compose = generate_compose(
             self.build_two_building_campus(),

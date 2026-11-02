@@ -7,8 +7,8 @@ This example demonstrates a full building HVAC simulation with:
 - Boiler for heating
 - Coordinated control sequences
 
-This example does NOT include BACnet networking - see example_bacnet_simulation.py
-for BACnet integration.
+This model example does not include networking. Use ./hvac-sim to run the
+BACnet and Modbus integration harness.
 """
 
 import time
@@ -205,12 +205,12 @@ def main():
         for vav in ahu.vav_boxes:
             zone_temps[vav.name] = 72.0  # Start at setpoint
 
-    print(f"\nBuilding Configuration:")
+    print("\nBuilding Configuration:")
     print(f"  AHUs: {len(ahus)}")
     print(f"  Total VAV boxes: {sum(len(ahu.vav_boxes) for ahu in ahus)}")
     print(f"  Chiller capacity: {chiller.capacity} tons")
     print(f"  Boiler capacity: {boiler.capacity} MBH")
-    print(f"\nStarting 8-hour simulation (6 AM to 2 PM)...")
+    print("\nStarting 8-hour simulation (6 AM to 2 PM)...")
     print("(Press Ctrl+C to stop)")
 
     try:

@@ -13,6 +13,10 @@ ALLOWED_EXTRA_ENV_VARS = frozenset(
         "BACNET_NETWORK_NUMBER",
         "BACNET_PORT",
         "BACNET_SUBNET",
+        "MODBUS_MODE",
+        "MODBUS_PORT",
+        "MODBUS_DIRECT_PORT_BASE",
+        "MODBUS_UNIT_ID_BASE",
     }
 )
 
@@ -216,6 +220,22 @@ def parse_extra_env_var(key: str, value: str) -> tuple[str, str]:
     elif normalized_key == "BACNET_NETWORK_NUMBER":
         normalized_value = str(
             validate_bacnet_network_number(normalized_value, variable_name=normalized_key)
+        )
+    elif normalized_key == "MODBUS_MODE":
+        normalized_value = normalized_value.lower()
+        if normalized_value not in {"off", "gateway", "direct", "both"}:
+            raise EnvironmentValidationError("MODBUS_MODE must be off, gateway, direct, or both")
+    elif normalized_key in {"MODBUS_PORT", "MODBUS_DIRECT_PORT_BASE"}:
+        normalized_value = str(
+            parse_integer_value(
+                normalized_value, variable_name=normalized_key, min_value=1, max_value=65535
+            )
+        )
+    elif normalized_key == "MODBUS_UNIT_ID_BASE":
+        normalized_value = str(
+            parse_integer_value(
+                normalized_value, variable_name=normalized_key, min_value=1, max_value=247
+            )
         )
 
     return normalized_key, normalized_value

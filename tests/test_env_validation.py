@@ -50,6 +50,12 @@ class TestEnvValidation(unittest.TestCase):
         self.assertEqual(key, "BACNET_NETWORK_NUMBER")
         self.assertEqual(value, "200")
 
+    def test_parse_extra_env_var_accepts_modbus_gateway_settings(self):
+        self.assertEqual(parse_extra_env_var("modbus_mode", "GATEWAY"), ("MODBUS_MODE", "gateway"))
+        self.assertEqual(parse_extra_env_var("modbus_port", "5020"), ("MODBUS_PORT", "5020"))
+        with self.assertRaises(EnvironmentValidationError):
+            parse_extra_env_var("modbus_unit_id_base", "248")
+
     def test_validate_bacnet_network_number_rejects_out_of_range_value(self):
         with self.assertRaises(EnvironmentValidationError):
             validate_bacnet_network_number("65535")

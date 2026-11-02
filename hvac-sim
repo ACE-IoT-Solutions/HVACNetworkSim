@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HVAC Simulator CLI - A simple command to run the containerized HVAC BACnet simulation.
+HVAC integration harness CLI for simple, Brick, and campus simulations.
 
 Usage:
     # Run simple simulation
@@ -290,6 +290,17 @@ def run_simulation(
             return 1
         cmd.extend(["-p", f"{port}:{DEFAULT_PORT}/udp"])
 
+    modbus_mode = env_vars.get("MODBUS_MODE", "off")
+    if network_mode != "host" and modbus_mode in {"direct", "both"}:
+        print(
+            "Error: direct Modbus meter ports require --network host and --allow-host-network.",
+            file=sys.stderr,
+        )
+        return 1
+    if network_mode != "host" and modbus_mode == "gateway":
+        modbus_port = env_vars.get("MODBUS_PORT", "5020")
+        cmd.extend(["-p", f"{modbus_port}:{modbus_port}/tcp"])
+
     # Add env vars to command
     for key, value in env_vars.items():
         cmd.extend(["-e", f"{key}={value}"])
@@ -432,6 +443,7 @@ def run_campus_generate(
     ttl_file: str | None,
     expose_bacnet: bool = False,
     scenario: str = "default",
+    modbus_settings: dict | None = None,
 ) -> bool:
     """Run the campus generator script."""
     script_dir = Path(__file__).parent
@@ -446,6 +458,14 @@ def run_campus_generate(
         cmd.append("--expose-bacnet")
     if ttl_file:
         cmd.append(ttl_file)
+    for key, flag in (
+        ("MODBUS_MODE", "--modbus-mode"),
+        ("MODBUS_PORT", "--modbus-port"),
+        ("MODBUS_DIRECT_PORT_BASE", "--modbus-direct-port-base"),
+        ("MODBUS_UNIT_ID_BASE", "--modbus-unit-id-base"),
+    ):
+        if modbus_settings and key in modbus_settings:
+            cmd.extend([flag, modbus_settings[key]])
 
     result = subprocess.run(cmd, cwd=script_dir)
     return result.returncode == 0
@@ -457,6 +477,7 @@ def run_campus(
     build: bool = False,
     expose_bacnet: bool = False,
     scenario: str = "default",
+    modbus_settings: dict | None = None,
 ) -> int:
     """Generate and start a campus simulation."""
     script_dir = Path(__file__).parent
@@ -464,7 +485,9 @@ def run_campus(
 
     # Generate compose and configs
     print("Generating campus configuration...")
-    if not run_campus_generate(ttl_file, expose_bacnet=expose_bacnet, scenario=scenario):
+    if not run_campus_generate(
+        ttl_file, expose_bacnet=expose_bacnet, scenario=scenario, modbus_settings=modbus_settings
+    ):
         return 1
 
     if not compose_file.exists():
@@ -543,7 +566,7 @@ def campus_logs(runtime: str) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run the HVAC BACnet Simulator in a container",
+        description="Run the HVAC integration harness in a container",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -611,7 +634,7 @@ Examples:
         "--env",
         action="append",
         metavar="KEY=VALUE",
-        help="Set additional BACnet runtime variables (BACNET_ADDRESS/IP/SUBNET/PORT/DEVICE_ID/NETWORK_NUMBER only)",
+        help="Set validated BACnet or Modbus runtime variables",
     )
 
     parser.add_argument(
@@ -745,6 +768,20 @@ Examples:
         )
         return 2
 
+    extra_env = {}
+    if args.env:
+        for env_str in args.env:
+            if "=" not in env_str:
+                print(f"Error: invalid environment variable assignment: {env_str}", file=sys.stderr)
+                return 1
+            key, value = env_str.split("=", 1)
+            try:
+                validated_key, validated_value = parse_extra_env_var(key, value)
+            except EnvironmentValidationError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            extra_env[validated_key] = validated_value
+
     # Detect container runtime
     runtime = check_container_runtime()
     print(f"Using container runtime: {runtime}")
@@ -757,12 +794,20 @@ Examples:
         return campus_logs(runtime)
 
     if args.campus is not None:
+        unsupported = [key for key in extra_env if not key.startswith("MODBUS_")]
+        if unsupported:
+            print(
+                f"Error: -e {', '.join(unsupported)} is not supported in campus mode",
+                file=sys.stderr,
+            )
+            return 1
         return run_campus(
             runtime,
             args.campus or None,
             build=args.build,
             expose_bacnet=args.expose_campus_bacnet,
             scenario=args.campus_scenario,
+            modbus_settings=extra_env,
         )
 
     # Handle --stop
@@ -783,21 +828,6 @@ Examples:
 
     # Stop any existing container
     stop_existing_container(runtime)
-
-    # Parse extra environment variables
-    extra_env = {}
-    if args.env:
-        for env_str in args.env:
-            if "=" not in env_str:
-                print(f"Error: invalid environment variable assignment: {env_str}", file=sys.stderr)
-                return 1
-            key, value = env_str.split("=", 1)
-            try:
-                validated_key, validated_value = parse_extra_env_var(key, value)
-            except EnvironmentValidationError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
-                return 1
-            extra_env[validated_key] = validated_value
 
     try:
         args.port = validate_bacnet_port(args.port, variable_name="--port")

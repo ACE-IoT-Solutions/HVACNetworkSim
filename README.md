@@ -1,10 +1,13 @@
 # HVAC Network Simulation
 
-A building HVAC simulation system that models realistic equipment behavior and exposes data via BACnet/IP. This enables testing of building automation systems, energy management software, and BACnet client applications without requiring physical equipment.
+A building HVAC integration harness that models equipment behavior and exposes
+data through BACnet/IP and optional Modbus TCP energy meters. It enables testing
+building automation and energy management software without physical equipment.
 
 ## Quick Start
 
-The easiest way to run the simulation is with the `hvac-sim` CLI, which handles container setup automatically:
+`./hvac-sim` is the supported entry point for the integration harness. It
+handles container setup and selects simple, Brick, or campus simulation:
 
 ```bash
 # Run simple VAV simulation
@@ -17,13 +20,17 @@ The easiest way to run the simulation is with the `hvac-sim` CLI, which handles 
 ./hvac-sim --list
 ```
 
-The CLI auto-detects Podman or Docker, builds the image if needed, and sets up all the correct volume mappings and environment variables.
+The CLI auto-detects Podman or Docker, builds the image if needed, and sets up
+the volume mappings and environment variables. Containers use
+`docker-entrypoint.sh` to launch `src/main.py`; campus generation and BBMD
+scripts are internal helpers. The small Python examples in `examples/` exercise
+model APIs without starting the network harness.
 
 Security defaults:
 - Host networking requires `--allow-host-network`.
 - Campus BBMD host ports and foreign-device registration require `--expose-campus-bacnet`.
 - Campus fault-control HTTP endpoints are published on `127.0.0.1` only.
-- `-e/--env` only accepts `BACNET_ADDRESS`, `BACNET_IP`, `BACNET_SUBNET`, `BACNET_PORT`, `BACNET_DEVICE_ID`, and `BACNET_NETWORK_NUMBER`.
+- `-e/--env` accepts validated BACnet and Modbus settings listed below.
 - Custom script execution requires both `--custom-script` and `--allow-custom-script`.
 
 ### CLI Options
@@ -41,7 +48,7 @@ Options:
   --build               Force rebuild the container image
   --stop                Stop the running simulation
   --logs                Show logs from the container
-  -e KEY=VALUE          Set additional BACnet runtime variables
+  -e KEY=VALUE          Set validated BACnet or Modbus runtime variables
   --custom-script PATH  Run a mounted custom Python script
   --allow-custom-script Explicitly allow arbitrary custom script execution
 
@@ -147,8 +154,8 @@ generator exits after writing the file without requiring Docker or Podman.
 # Run the built-in duplicate-router-claim scenario
 ./hvac-sim --campus --campus-scenario multi-network-duplicate-router-claim
 
-# Run a custom script with explicit acknowledgement
-./hvac-sim --custom-script examples/example_simulation.py --allow-custom-script
+# Run your own custom Python script when a special harness is required
+./hvac-sim --custom-script /path/to/custom_simulation.py --allow-custom-script
 ```
 
 ## Multi-Building Campus Simulation
@@ -342,6 +349,10 @@ podman run --rm -it -p 47808:47808/udp \
 | `BACNET_PORT` | 47808 | BACnet UDP port |
 | `BACNET_DEVICE_ID` | 599 | BACnet device instance ID |
 | `BACNET_NETWORK_NUMBER` | - | Optional BACnet network number for the device's network-port object |
+| `MODBUS_MODE` | off | Energy meter endpoints: `off`, `gateway`, `direct`, or `both` |
+| `MODBUS_PORT` | 5020 | Shared gateway TCP port |
+| `MODBUS_DIRECT_PORT_BASE` | 5500 | First per-meter direct TCP port |
+| `MODBUS_UNIT_ID_BASE` | 1 | Building meter unit ID; equipment IDs follow |
 | `ROUTER_CLAIMED_NETWORKS` | - | Optional comma-separated extra BACnet network numbers for the building router to advertise |
 | `SIMULATION_MODE` | simple | Simulation mode: `simple`, `brick`, or `custom` |
 | `BRICK_TTL_FILE` | - | Path to Brick TTL file (for brick mode) |
@@ -362,14 +373,11 @@ uv sync
 # Run tests
 uv run pytest
 
-# Run a simple example
+# Run a model-only example (no BACnet or Modbus server)
 uv run python examples/simple_vav.py
 
-# Run the full building example
-uv run python examples/complete_building.py
-
-# Run the main BACnet simulation
-uv run python src/main.py
+# Run the integration harness through the same supported launcher
+./hvac-sim
 ```
 
 ## Components
@@ -454,8 +462,8 @@ examples/
 ├── multi_building_campus.ttl  # 2-building demo (7 VAVs)
 ├── multi_building_campus_collisions.ttl  # Duplicate device-id campus example
 ├── large_campus.ttl        # Full campus (6 buildings, 108 VAVs)
-├── test_campus.sh          # End-to-end campus compose test helper
-└── ...                     # Additional examples
+├── test_campus.sh          # End-to-end campus verification helper
+└── bacnet_device_config.py # Configuration example, no runtime entry point
 
 docker-compose.multihomed.yml  # Direct multi-network harness without BBMDs
 
@@ -505,6 +513,67 @@ vav = VAVBox.from_config(config)
 ```
 
 ## BACnet Integration
+
+### Modbus Energy Meters
+
+Set `MODBUS_MODE=gateway`, `direct`, or `both` to enable read-only Modbus TCP
+meters. The default is `off`, preserving existing BACnet-only deployments.
+Every building has a whole-building meter and each simulated equipment instance
+has its own meter. The building meter sums electrical and gas demand from the
+equipment meters; VAV thermal loads are excluded from that sum to avoid counting
+the same heat transfer twice. Meters advance by one simulated hour per runtime
+tick, matching the existing BACnet simulation loop. Existing BACnet objects,
+device IDs, and network settings are unchanged.
+
+In `gateway` mode, all meters share `MODBUS_HOST:MODBUS_PORT` (default
+`0.0.0.0:5020`). The MBAP unit ID selects the meter, as it would when polling
+RTU slaves through a Modbus TCP-to-RTU router. The building is unit ID 1 by
+default, followed by equipment in creation order. Set `MODBUS_UNIT_ID_BASE`
+to shift this range; valid IDs are 1–247. In campus mode each building container
+has its own endpoint and unit IDs. In `direct` mode, the building listens on
+`MODBUS_DIRECT_PORT_BASE` (default 5500), with each equipment meter on the next
+port. `both` starts both endpoint types. The startup log lists the assigned
+meter names and unit IDs.
+
+Read holding registers (function 03) or input registers (function 04). Addresses
+are zero-based, and each value occupies two registers as a big-endian IEEE-754
+float32 (high word first):
+
+| Address | Value | Unit |
+| --- | --- | --- |
+| 0–1 | Electrical demand | kW |
+| 2–3 | Accumulated electrical energy | kWh |
+| 4–5 | Gas demand | therms/hour |
+| 6–7 | Accumulated gas energy | therms |
+| 8–9 | Thermal transfer rate | kW thermal |
+
+The electrical register uses each equipment model's power calculation. VAV
+meters report zero electrical demand because the VAV model does not simulate a
+local motor; they still report thermal transfer. Gas boilers report gas energy
+in therms. Accumulators begin at zero on startup. Modbus writes are rejected.
+
+Example gateway configuration using the supported launcher:
+
+```bash
+./hvac-sim -e MODBUS_MODE=gateway -e MODBUS_PORT=5020
+```
+
+The CLI publishes the gateway TCP port in bridge mode. Direct meter ports
+require host networking:
+
+```bash
+./hvac-sim --network host --allow-host-network -e MODBUS_MODE=direct
+```
+
+For a campus, pass the same setting to the launcher:
+
+```bash
+./hvac-sim --campus -e MODBUS_MODE=gateway
+```
+
+The generated stack gives each building its own meter bank and publishes the
+shared gateway endpoints on loopback ports 15021, 15022, and so on. Direct
+per-meter ports remain available on each building container's network address.
 
 The simulation exposes all equipment as BACnet devices:
 

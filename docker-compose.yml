@@ -18,6 +18,7 @@ services:
 
     ports:
       - "47808:47808/udp"
+      - "5020:5020/tcp"
 
     environment:
       # BACnet IP is auto-detected from container's network interface
@@ -25,6 +26,7 @@ services:
       # BACNET_IP: "172.28.0.10"
       BACNET_SUBNET: "16"
       BACNET_PORT: "47808"
+      # MODBUS_MODE: "gateway"
 
       # Simulation mode: "simple" or "brick"
       SIMULATION_MODE: "simple"
@@ -65,10 +67,12 @@ services:
 
     ports:
       - "47809:47808/udp"
+      - "5021:5020/tcp"
 
     environment:
       BACNET_SUBNET: "16"
       BACNET_PORT: "47808"
+      # MODBUS_MODE: "gateway"
       SIMULATION_MODE: "brick"
       BRICK_TTL_FILE: "/app/brick_schemas/bldg36.ttl"
 

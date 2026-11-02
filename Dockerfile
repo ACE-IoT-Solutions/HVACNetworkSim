@@ -24,8 +24,9 @@ RUN mkdir -p /app/configs /app/brick_schemas
 # Install Python dependencies
 RUN uv sync --no-dev
 
-# Expose BACnet and fault-control ports
+# Expose BACnet, optional Modbus gateway, and fault-control ports
 EXPOSE 47808/udp
+EXPOSE 5020/tcp
 EXPOSE 9100/tcp
 
 # Set environment variables

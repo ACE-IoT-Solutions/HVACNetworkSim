@@ -21,9 +21,7 @@ Network architecture (example with 2 buildings):
     All containers (sims + BBMDs) have static routes via the router.
     Host port mapping retained for external scanner access.
 
-Usage:
-    python campus/generate_campus.py examples/multi_building_campus.ttl
-    python campus/generate_campus.py examples/large_campus.ttl
+Invoked by ``./hvac-sim --campus``. The generator is an internal helper.
 """
 
 import argparse
@@ -188,6 +186,7 @@ def generate_compose(
     bbmd_image: str = "ace-acl-bbmd",
     expose_bacnet: bool = False,
     scenario: str = DEFAULT_CAMPUS_SCENARIO,
+    modbus_settings: dict[str, str] | None = None,
 ) -> str:
     """Generate docker-compose.campus.yml content.
 
@@ -374,12 +373,18 @@ def generate_compose(
             sim_lines.append(
                 f"      ROUTER_CLAIMED_NETWORKS: {yaml_quote(','.join(str(n) for n in router_claims))}"
             )
+        if modbus_settings:
+            for key, value in modbus_settings.items():
+                sim_lines.append(f"      {key}: {yaml_quote(value)}")
         sim_lines.extend(
             [
                 "    ports:",
                 f'      - "127.0.0.1:{sim_control_host_port}:{SIM_CONTROL_PORT}/tcp"',
             ]
         )
+        if modbus_settings and modbus_settings.get("MODBUS_MODE") in ("gateway", "both"):
+            modbus_port = modbus_settings.get("MODBUS_PORT", "5020")
+            sim_lines.append(f'      - "127.0.0.1:{15020 + i}:{modbus_port}/tcp"')
         if num_buildings > 1:
             sim_lines.extend(
                 [
@@ -481,6 +486,10 @@ def main():
         action="store_true",
         help="Publish BBMD host ports and allow foreign-device registration",
     )
+    parser.add_argument("--modbus-mode", choices=("off", "gateway", "direct", "both"))
+    parser.add_argument("--modbus-port", type=int)
+    parser.add_argument("--modbus-direct-port-base", type=int)
+    parser.add_argument("--modbus-unit-id-base", type=int)
     args = parser.parse_args()
 
     ttl_path = resolve_campus_ttl(args.ttl_file, args.scenario)
@@ -529,6 +538,16 @@ def main():
         str(ttl_path),
         expose_bacnet=args.expose_bacnet,
         scenario=args.scenario,
+        modbus_settings={
+            key: str(value)
+            for key, value in (
+                ("MODBUS_MODE", args.modbus_mode),
+                ("MODBUS_PORT", args.modbus_port),
+                ("MODBUS_DIRECT_PORT_BASE", args.modbus_direct_port_base),
+                ("MODBUS_UNIT_ID_BASE", args.modbus_unit_id_base),
+            )
+            if value is not None
+        },
     )
     compose_path = PROJECT_ROOT / "docker-compose.campus.yml"
     compose_path.write_text(compose_content)
